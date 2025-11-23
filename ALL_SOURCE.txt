@@ -1,0 +1,447 @@
+
+components\addReusableIOComponents.m
+--------------------------------------------------
+function addReusableIOComponents(app, panelName, allowImage)
+% Adds text input, text output, encrypt/decrypt/reset buttons and optional image controls.
+    P = app.(panelName);
+
+    if ~isfield(app.UI, panelName)
+        app.UI.(panelName) = struct();
+    end
+    ui = app.UI.(panelName);
+
+    % INPUT MODE radio only if allowImage
+    if allowImage
+        ui.InputTypeGroup = uibuttongroup(P, 'Position',[20 350 300 40], ...
+            'SelectionChangedFcn', @(bg,event)switchInputMode(app,event,panelName));
+        ui.TextRadio = uiradiobutton(ui.InputTypeGroup,'Text','Text Input','Position',[10 8 100 22],'Value',true);
+        ui.ImageRadio = uiradiobutton(ui.InputTypeGroup,'Text','Image Input','Position',[120 8 120 22]);
+    end
+
+    % Text input label + area
+    uilabel(P,'Text','Text Input:','Position',[20 300 80 22]);
+    % create the UserInput control and store handle first
+    ui.UserInput = uitextarea(P, 'Position',[20 200 300 90]);
+
+    % now attach the callback (attach AFTER handle exists)
+    % this avoids a timing issue where callback fires before app.UI has the field
+    ui.UserInput.ValueChangedFcn = @(t,e)catchTextInput(app,panelName);
+
+
+    % Load Image button (hidden if not allowImage)
+    if allowImage
+        ui.Btn_LoadImage = uibutton(P,'Text','Load Image','Position',[340 300 120 30],...
+            'ButtonPushedFcn',@(btn,event)Btn_LoadImagePushed(app,event,panelName),'Visible','off');
+        ui.Btn_SaveImage = uibutton(P,'Text','Save Image','Position',[340 150 120 30],...
+            'ButtonPushedFcn',@(btn,event)Btn_SaveImagePushed(app,event,panelName),'Visible','off');
+    end
+
+    % Encrypt/Decrypt/Reset buttons
+    ui.Btn_Encrypt = uibutton(P,'Text','Encrypt','Position',[20 150 100 35], 'ButtonPushedFcn', @(btn,event)EncryptHandler(app));
+    ui.Btn_Decrypt = uibutton(P,'Text','Decrypt','Position',[140 150 100 35], 'ButtonPushedFcn', @(btn,event)DecryptHandler(app));
+    ui.Btn_Reset   = uibutton(P,'Text','Reset','Position',[260 150 100 35], 'ButtonPushedFcn', @(btn,event)resetModule(app,panelName));
+
+    % Output area
+    uilabel(P,'Text','Output:','Position',[20 110 80 22]);
+    ui.UserOutput = uitextarea(P,'Position',[20 10 300 100], 'Editable','off');
+
+    % Key input (single-line) - visible for XOR; hide if not needed
+    ui.Edit_Key = uieditfield(P,'text','Position',[340 200 200 25], 'Value','key', 'Visible', 'on');
+
+    ui.Status = uilabel(P,'Text','Ready','Position',[340 10 260 22]);
+end
+
+components\addReusablePreviewArea.m
+--------------------------------------------------
+function addReusablePreviewArea(app)
+% create PreviewAxes and PreviewTextArea only if not already present
+    if isempty(app.PreviewAxes) || ~isvalid(app.PreviewAxes)
+        app.PreviewAxes = uiaxes(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
+    end
+    if isempty(app.PreviewTextArea) || ~isvalid(app.PreviewTextArea)
+        app.PreviewTextArea = uitextarea(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
+    end
+end
+
+crypt\caesarDecrypt.m
+--------------------------------------------------
+function out = caesarDecrypt(inText, shift)
+    out = caesarEncrypt(inText, -shift);
+end
+
+crypt\caesarEncrypt.m
+--------------------------------------------------
+function out = caesarEncrypt(inText, shift)
+% CAESARENCRYPT  shift only alphabetic characters, preserve others.
+    if isempty(inText)
+        out = '';
+        return;
+    end
+    s = char(inText);
+    out = s;
+    for k = 1:numel(s)
+        c = s(k);
+        if c >= 'A' && c <= 'Z'
+            out(k) = char(mod(double(c)-double('A') + shift, 26) + double('A'));
+        elseif c >= 'a' && c <= 'z'
+            out(k) = char(mod(double(c)-double('a') + shift, 26) + double('a'));
+        else
+            out(k) = c;
+        end
+    end
+end
+
+crypt\xorBytes.m
+--------------------------------------------------
+function out = xorBytes(bytes, keyBytes)
+% XORBYTES   Simple XOR stream: bytes and keyBytes are uint8 vectors.
+    if isempty(bytes)
+        out = uint8([]);
+        return;
+    end
+    key = uint8(keyBytes(:));
+    if isempty(key)
+        error('xorBytes: empty key');
+    end
+    keyRep = repmat(key, ceil(numel(bytes)/numel(key)), 1);
+    keyRep = keyRep(1:numel(bytes));
+    out = bitxor(uint8(bytes(:)), uint8(keyRep));
+end
+
+handlers\DecryptHandler.m
+--------------------------------------------------
+function DecryptHandler(app, event)
+    M = app.currentModule;
+    ui = app.UI.(M);
+
+    inputIsImage = app.isInputImage;
+
+    if strcmp(M, "HashPanel")
+        ui.Status.Text = "Hash is one-way. No decryption.";
+        return;
+    end
+
+    if app.isInputImage
+        if isempty(app.currentImage)
+            uialert(app.UIFigure, "Load an image first.", "Error");
+            return;
+        end
+    else
+        if isempty(app.currentText)
+            uialert(app.UIFigure, "Enter text first.", "Error");
+            return;
+        end
+    end
+
+   try
+        switch M
+            case 'CaesarPanel'
+                shift = app.ShiftEditField.Value;
+                app.outputText = caesarDecrypt(app.currentText, shift);
+                app.outputImage = [];
+                previewDispatcher(app);
+                ui.Status.Text = 'Decrypted (Caesar)';
+
+            case 'XORPanel'
+                keyBytes = textToBytes(app.currentKey);
+                if inputIsImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = xorBytes(inBytes, keyBytes); % XOR symmetric
+                    app.outputImage = bytesToImage(outBytes, meta);
+                    app.outputText = '';
+                    ui.Btn_SaveImage.Visible = 'on';
+                    previewDispatcher(app);
+                    ui.Status.Text = 'Decrypted (XOR, image)';
+                else
+                    inBytes = textToBytes(app.currentText);
+                    outBytes = xorBytes(inBytes, keyBytes);
+                    app.outputText = bytesToText(outBytes);
+                    app.outputImage = [];
+                    previewDispatcher(app);
+                    ui.Status.Text = 'Decrypted (XOR, text)';
+                end
+
+            otherwise
+                uialert(app.UIFigure, 'Decrypt: module not implemented', 'Error');
+        end
+    catch ME
+        uialert(app.UIFigure, ['Decrypt error: ' ME.message], 'Error');
+    end
+
+    % previewDispatcher(app);
+    % ui.Status.Text = "Decrypted.";
+end
+
+handlers\EncryptHandler.m
+--------------------------------------------------
+function EncryptHandler(app, event)
+    M = app.currentModule;
+    ui = app.UI.(M);
+    inputIsImage = app.isInputImage;
+
+    % Validate input
+    if inputIsImage
+        if isempty(app.currentImage)
+            uialert(app.UIFigure, "Load an image first.", "Error");
+            return;
+        end
+    else
+        if isempty(app.currentText)
+            uialert(app.UIFigure, "Enter text first.", "Error");
+            return;
+        end
+    end
+
+    try
+        switch M
+            case 'CaesarPanel'
+                % text-only; use char-based Caesar
+                txt = app.currentText;
+                shift = app.ShiftEditField.Value;
+                app.outputText = caesarEncrypt(txt, shift);
+                app.outputImage = [];
+                % show in preview
+                previewDispatcher(app);
+                ui.Status.Text = 'Encrypted (Caesar)';
+
+            case 'XORPanel'
+                keyBytes = textToBytes(app.currentKey);
+                if inputIsImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = xorBytes(inBytes, keyBytes);
+                    app.outputImage = bytesToImage(outBytes, meta);
+                    app.outputText = '';
+                    ui.Btn_SaveImage.Visible = 'on';
+                    previewDispatcher(app);
+                    ui.Status.Text = 'Encrypted (XOR, image)';
+                else
+                    inBytes = textToBytes(app.currentText);
+                    outBytes = xorBytes(inBytes, keyBytes);
+                    app.outputText = bytesToText(outBytes);
+                    app.outputImage = [];
+                    previewDispatcher(app);
+                    ui.Status.Text = 'Encrypted (XOR, text)';
+                end
+
+            otherwise
+                uialert(app.UIFigure, 'Encrypt: module not implemented', 'Error');
+        end
+    catch ME
+        uialert(app.UIFigure, ['Encrypt error: ' ME.message], 'Error');
+    end
+
+    % Update preview
+    
+    % previewDispatcher(app);
+    % ui.Status.Text = "Encrypted.";
+end
+
+handlers\resetModule.m
+--------------------------------------------------
+function resetModule(app, event, panelName)
+    ui = app.UI.(panelName);
+
+    % Clear internal state
+    app.currentText = '';
+    app.currentImage = [];
+    app.outputText = '';
+    app.outputImage = [];
+
+    % Clear input/output fields
+    if isfield(ui,'UserInput')
+        ui.UserInput.Value = '';
+    end
+
+    if isfield(ui,'UserOutput')
+        ui.UserOutput.Value = '';
+    end
+
+    % Hide preview
+    app.PreviewAxes.Visible = "off";
+    app.PreviewTextArea.Visible = "off";
+
+    % Reset the mode to TEXT by default
+    if isfield(ui,'TextRadio')
+        ui.TextRadio.Value = true;
+        ui.UserInput.Visible = "on";
+    end
+    if isfield(ui,'Btn_LoadImage')
+        ui.Btn_LoadImage.Visible = "off";
+    end
+    if isfield(ui,'Btn_SaveImage')
+        ui.Btn_SaveImage.Visible = "off";
+    end
+
+    ui.Status.Text = "Reset complete.";
+end
+
+
+handlers\updateStatus.m
+--------------------------------------------------
+function updateStatus(app, message)
+    try
+        app.(app.currentModule).Lbl_Status.Text = message;
+    end
+end
+
+io\encoding\bytesToImage.m
+--------------------------------------------------
+function img = bytesToImage(bytes, meta)
+% BYTESTOIMAGE   Rebuild image from bytes using meta.
+    if isempty(bytes) || isempty(meta) || isempty(meta.size)
+        img = [];
+        return;
+    end
+
+    switch meta.encodedClass
+        case 'uint8'
+            raw = reshape(uint8(bytes), meta.size);
+            img = cast(raw, meta.class);
+        case 'uint16'
+            % bytes are little-endian uint16 representation
+            u8 = uint8(bytes(:));
+            u16 = typecast(u8,'uint16');
+            raw = reshape(u16, meta.size);
+            img = cast(raw, meta.class);
+        case 'uint8_im2u8'
+            raw = reshape(uint8(bytes), meta.size);
+            img = raw; % best we can do
+        otherwise
+            error('bytesToImage: unknown meta.encodedClass');
+    end
+end
+
+io\encoding\bytesToText.m
+--------------------------------------------------
+function txt = bytesToText(bytes)
+% BYTESTOTEXT   Convert uint8 vector to char row.
+    if isempty(bytes)
+        txt = '';
+        return;
+    end
+    txt = char(bytes(:).'); % make a row char vector
+end
+
+io\encoding\imageToBytes.m
+--------------------------------------------------
+function [bytes, meta] = imageToBytes(img)
+% IMAGETOBYTES   Flatten image to bytes and return meta for reconstruction.
+    if isempty(img)
+        bytes = uint8([]);
+        meta = struct('size',[],'class','');
+        return;
+    end
+    meta.size = size(img);
+    meta.class = class(img);
+    % Accept uint8 images most commonly
+    if isa(img,'uint8')
+        bytes = uint8(img(:));
+        meta.encodedClass = 'uint8';
+    elseif isa(img,'uint16')
+        % pack uint16 into uint8 (little-endian)
+        arr = img(:);
+        bytes = typecast(uint16(arr),'uint8');
+        bytes = uint8(bytes(:));
+        meta.encodedClass = 'uint16';
+    else
+        % fallback: convert to uint8 using im2uint8 (may change values)
+        img8 = im2uint8(img);
+        bytes = uint8(img8(:));
+        meta.encodedClass = 'uint8_im2u8';
+    end
+end
+
+io\encoding\textToBytes.m
+--------------------------------------------------
+function bytes = textToBytes(txt)
+% TEXTTOBYTES   Convert text (char or string) to uint8 column vector.
+    if isempty(txt)
+        bytes = uint8([]);
+        return;
+    end
+    if isstring(txt)
+        txt = char(txt);
+    end
+    % Accept either cell array (lines) or char
+    if iscell(txt)
+        txt = strjoin(txt, newline);
+    end
+    bytes = uint8(char(txt(:)));
+end
+
+io\catchTextInput.m
+--------------------------------------------------
+function catchTextInput(app, panelName)
+% defensive text capture: returns early if UI not yet registered
+
+    ui = app.UI.(panelName);
+
+    % Now safe to read value
+    val = ui.UserInput.Value;
+    if iscell(val)
+        app.currentText = strjoin(val, newline);
+    else
+        app.currentText = char(val);
+    end
+    
+end
+
+io\switchInputMode.m
+--------------------------------------------------
+function switchInputMode(app, event, panelName)
+    % event.NewValue.Text == 'Image Input' or 'Text Input'
+    ui = app.UI.(panelName);
+    if contains(event.NewValue.Text,'Image')
+        app.isInputImage = true;
+        ui.UserInput.Visible = 'off';
+        ui.Btn_LoadImage.Visible = 'on';
+        ui.UserOutput.Visible = 'off';
+        app.currentText = '';
+    else
+        app.isInputImage = false;
+        ui.UserInput.Visible = 'on';
+        ui.Btn_LoadImage.Visible = 'off';
+        ui.UserOutput.Visible = 'on';
+        app.currentImage = [];
+    end
+end
+
+preview\previewDispatcher.m
+--------------------------------------------------
+function previewDispatcher(app)
+% PREVIEWDISPATCHER   Show app.outputImage (preferred) or app.outputText.
+    % hide both first
+    try app.PreviewAxes.Visible = 'off'; catch; end
+    try app.PreviewTextArea.Visible = 'off'; catch; end
+
+    if ~isempty(app.outputImage)
+        app.PreviewTextArea.Visible = 'off';
+        app.PreviewAxes.Visible = 'on';
+        imshow(app.outputImage, 'Parent', app.PreviewAxes);
+        return;
+    end
+
+    if ~isempty(app.outputText)
+        app.PreviewAxes.Visible = 'off';
+        app.PreviewTextArea.Visible = 'on';
+        % preview text as cellstr (TextArea expects cell or string array)
+        app.PreviewTextArea.Value = cellstr(app.outputText);
+        return;
+    end
+end
+
+preview\previewImage.m
+--------------------------------------------------
+function previewImage(app, img)
+    imshow(img, 'Parent', app.UIAxes);
+end
+
+preview\previewText.m
+--------------------------------------------------
+function previewText(app, txt)
+    app.TextArea.Value = splitlines(txt);
+end
+
+mainApp.mlapp
+--------------------------------------------------
+(No script section found — cannot extract code.)

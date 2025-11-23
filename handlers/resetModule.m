@@ -1,0 +1,33 @@
+function resetModule(app, panelName)
+% Reset UI & app state for the given panel
+    if ~isfield(app.UI, panelName), return; end
+    ui = app.UI.(panelName);
+
+    % internal state
+    app.currentText = '';
+    app.currentImage = [];
+    app.outputText = '';
+    app.outputImage = [];
+
+    % UI controls (guarded)
+    if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
+    if isfield(ui,'UserOutput'), ui.UserOutput.Value = ''; end
+    if isfield(ui,'InputPath'), ui.InputPath.Value = ''; end
+    if isfield(ui,'PreviewAxes'), ui.PreviewAxes.Visible = 'off'; end
+    if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
+    if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
+    if isfield(ui,'Edit_Key'), ui.Edit_Key.Visible = 'off'; ui.Edit_Key.Value = ''; end
+
+    % in image mode InputPath should be non-editable
+    if isfield(ui,'TextRadio') && ui.TextRadio.Value
+        ui.UserInput.Editable = 'on';
+        if isfield(ui,'Btn_LoadImage'), ui.Btn_LoadImage.Visible = 'off'; end
+    end
+
+    switch panelName
+        case 'CaesarPanel'
+            app.ShiftEditField.Value = 3;
+    end
+
+    ui.Status.Text = 'Reset complete';
+end
