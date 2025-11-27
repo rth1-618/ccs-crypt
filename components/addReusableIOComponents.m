@@ -52,11 +52,7 @@ function addReusableIOComponents(app, panelName, allowImage)
 
     % Add a small preview area under output (shared for text or image)
     ui.PreviewAxes = uiaxes(P, 'Position',[360 50 280 250], 'Visible','off');
-    % ui.PreviewText = uitextarea(P, 'Position',[350 10 280 220], 'Editable','off', 'Visible','off');
-
-    % Key input (single line) — default hidden; modules can show it
-    % ui.Edit_Key = uieditfield(P,'text', 'Position',[340 200 200 25], 'Visible','off');
-
+   
     % Status label
     ui.Status = uilabel(P, 'Text','Ready', 'Position',[450 20 320 30], 'FontSize',16,'FontWeight','bold');
 

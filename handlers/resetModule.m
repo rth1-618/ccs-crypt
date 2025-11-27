@@ -8,6 +8,7 @@ function resetModule(app, panelName)
     app.currentImage = [];
     app.outputText = '';
     app.outputImage = [];
+    app.currentKey = '';
 
     % UI controls (guarded)
     if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
@@ -17,7 +18,7 @@ function resetModule(app, panelName)
         ui.PreviewAxes.Visible = 'off'; 
         imshow([], 'Parent', ui.PreviewAxes);
     end
-    % if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
+
     if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
 
     % in image mode InputPath should be non-editable

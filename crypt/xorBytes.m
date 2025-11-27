@@ -9,6 +9,7 @@ function out = xorBytes(bytes, keyBytes)
         error('xorBytes: empty key');
     end
     keyRep = repmat(key, ceil(numel(bytes)/numel(key)), 1);
+    
     keyRep = keyRep(1:numel(bytes));
     out = bitxor(uint8(bytes(:)), uint8(keyRep));
 end
