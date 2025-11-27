@@ -57,6 +57,22 @@ function EncryptHandler(app)
                     % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Encrypted (XOR text)';
                 end
+            case 'OTPPanel'
+                % Generate a one-time pad key
+                txt = app.currentText;
+                if isempty(strtrim(txt))
+                    uialert(app.UIFigure,'Enter text first.','Error'); return;
+                end
+            
+                [cipher, keyStr] = otpEncrypt(txt);
+            
+                app.outputText = cipher;
+                app.currentKey = keyStr;
+            
+                ui.UserOutput.Value = cipher;
+                app.OTPKeyEditField.Value = keyStr;
+            
+                ui.Status.Text = 'Encrypted (OTP)';
             otherwise
                 uialert(app.UIFigure,'Encrypt: module not implemented','Error');
         end

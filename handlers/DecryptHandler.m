@@ -51,6 +51,27 @@ function DecryptHandler(app)
                     % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Decrypted (XOR text)';
                 end
+            case 'OTPPanel'
+                cipher = app.currentText;
+                keyStr = app.currentKey;
+            
+                if isempty(cipher)
+                    uialert(app.UIFigure,'Enter ciphertext first.','Error'); return;
+                end
+                if isempty(keyStr)
+                    uialert(app.UIFigure,'No OTP key stored. Encrypt first.','Error'); return;
+                end
+            
+                try
+                    plain = otpDecrypt(cipher, keyStr);
+                catch ME
+                    uialert(app.UIFigure, ME.message, 'Error');
+                    return;
+                end
+            
+                app.outputText = plain;
+                ui.UserOutput.Value = plain;
+                ui.Status.Text = 'Decrypted (OTP)';
             otherwise
                 uialert(app.UIFigure,'Decrypt: module not implemented','Error');
         end

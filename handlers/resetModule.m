@@ -32,6 +32,9 @@ function resetModule(app, panelName)
             app.ShiftEditField.Value = 3;
         case 'XORPanel'
             app.XORKeyEditField.Value = '';
+        case 'OTPPanel'
+            app.currentKey = '';
+            app.OTPKeyEditField.Value = '';
     end
 
     ui.Status.Text = 'Reset complete';
