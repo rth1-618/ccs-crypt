@@ -29,7 +29,7 @@ function EncryptHandler(app)
 
             case 'XORPanel'
                 % need key
-                key = ui.Edit_Key.Value;
+                key = app.currentKey;
                 if isempty(key)
                     uialert(app.UIFigure,'Enter a key in the Key field.','Error'); return;
                 end
@@ -40,7 +40,7 @@ function EncryptHandler(app)
                     app.outputImage = bytesToImage(outBytes, meta);
                     app.outputText = '';
                     % show image preview and enable save
-                    ui.PreviewText.Visible = 'off';
+                    % ui.PreviewText.Visible = 'off';
                     ui.PreviewAxes.Visible = 'on';
                     imshow(app.outputImage, 'Parent', ui.PreviewAxes);
                     ui.Btn_SaveImage.Visible = 'on';
@@ -53,8 +53,8 @@ function EncryptHandler(app)
                     app.outputImage = [];
                     ui.UserOutput.Value = app.outputText;
                     ui.PreviewAxes.Visible = 'off';
-                    ui.PreviewText.Visible = 'on';
-                    ui.PreviewText.Value = splitlines(app.outputText);
+                    % ui.PreviewText.Visible = 'on';
+                    % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Encrypted (XOR text)';
                 end
             otherwise

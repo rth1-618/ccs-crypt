@@ -2,53 +2,69 @@
 components\addReusableIOComponents.m
 --------------------------------------------------
 function addReusableIOComponents(app, panelName, allowImage)
-% Adds text input, text output, encrypt/decrypt/reset buttons and optional image controls.
+% addReusableIOComponents  Create reused UI pieces inside panel
+%   app: the app object
+%   panelName: name of panel property (e.g., 'CaesarPanel')
+%   allowImage: boolean — whether to include image mode controls
+
     P = app.(panelName);
 
+    % ensure UI namespace exists
     if ~isfield(app.UI, panelName)
         app.UI.(panelName) = struct();
     end
     ui = app.UI.(panelName);
 
-    % INPUT MODE radio only if allowImage
+    % Input type radio (for modules that accept images)
     if allowImage
-        ui.InputTypeGroup = uibuttongroup(P, 'Position',[20 350 300 40], ...
+        ui.InputTypeGroup = uibuttongroup(P, 'Position',[20 340 300 40], ...
             'SelectionChangedFcn', @(bg,event)switchInputMode(app,event,panelName));
-        ui.TextRadio = uiradiobutton(ui.InputTypeGroup,'Text','Text Input','Position',[10 8 100 22],'Value',true);
-        ui.ImageRadio = uiradiobutton(ui.InputTypeGroup,'Text','Image Input','Position',[120 8 120 22]);
+        ui.TextRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Text Input', 'Position',[10 8 100 22], 'Value', true);
+        ui.ImageRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Image Input', 'Position',[120 8 120 22]);
     end
 
     % Text input label + area
-    uilabel(P,'Text','Text Input:','Position',[20 300 80 22]);
-    % create the UserInput control and store handle first
-    ui.UserInput = uitextarea(P, 'Position',[20 200 300 90]);
+    uilabel(P,'Text','Input:','Position',[20 300 80 22]);
+    ui.UserInput = uitextarea(P, 'Position',[20 210 300 90]);
+    % attach callback to capture text into app
+    ui.UserInput.ValueChangedFcn = @(t,e)catchTextInput(app, panelName);
 
-    % now attach the callback (attach AFTER handle exists)
-    % this avoids a timing issue where callback fires before app.UI has the field
-    ui.UserInput.ValueChangedFcn = @(t,e)catchTextInput(app,panelName);
+    % Input path / info (single-line) - shows image path when image mode
+    ui.InputPath = uieditfield(P,'text','Position',[20 190 300 35], 'Editable','off','Visible','off','Placeholder','File Path');
 
-
-    % Load Image button (hidden if not allowImage)
+    % Load/Save image buttons (hidden unless image mode)
     if allowImage
-        ui.Btn_LoadImage = uibutton(P,'Text','Load Image','Position',[340 300 120 30],...
-            'ButtonPushedFcn',@(btn,event)Btn_LoadImagePushed(app,event,panelName),'Visible','off');
-        ui.Btn_SaveImage = uibutton(P,'Text','Save Image','Position',[340 150 120 30],...
-            'ButtonPushedFcn',@(btn,event)Btn_SaveImagePushed(app,event,panelName),'Visible','off');
+        % ui.InputPath.Visible = 'on';
+        ui.Btn_LoadImage = uibutton(P, 'Text','Load Image', 'Position',[20 250 120 30], ...
+            'ButtonPushedFcn', @(btn,event)Btn_LoadImagePushed(app,event,panelName), 'Visible','on');
+        ui.Btn_SaveImage = uibutton(P, 'Text','Save Image', 'Position',[160 250 120 30], ...
+            'ButtonPushedFcn', @(btn,event)Btn_SaveImagePushed(app,event,panelName), 'Visible','off');
     end
 
-    % Encrypt/Decrypt/Reset buttons
-    ui.Btn_Encrypt = uibutton(P,'Text','Encrypt','Position',[20 150 100 35], 'ButtonPushedFcn', @(btn,event)EncryptHandler(app));
-    ui.Btn_Decrypt = uibutton(P,'Text','Decrypt','Position',[140 150 100 35], 'ButtonPushedFcn', @(btn,event)DecryptHandler(app));
-    ui.Btn_Reset   = uibutton(P,'Text','Reset','Position',[260 150 100 35], 'ButtonPushedFcn', @(btn,event)resetModule(app,panelName));
+    % Encrypt / Decrypt / Reset buttons
+    ui.Btn_Encrypt = uibutton(P, 'Text','Encrypt', 'Position',[20 130 100 35], ...
+        'ButtonPushedFcn', @(btn,event)EncryptHandler(app));
+    ui.Btn_Decrypt = uibutton(P, 'Text','Decrypt', 'Position',[140 130 100 35], ...
+        'ButtonPushedFcn', @(btn,event)DecryptHandler(app));
+    ui.Btn_Reset   = uibutton(P, 'Text','Reset', 'Position',[260 130 100 35], ...
+        'ButtonPushedFcn', @(btn,event)resetModule(app,panelName));
 
-    % Output area
-    uilabel(P,'Text','Output:','Position',[20 110 80 22]);
-    ui.UserOutput = uitextarea(P,'Position',[20 10 300 100], 'Editable','off');
+    % Output area (single textarea) — used for text outputs
+    uilabel(P,'Text','Output:','Position',[20 100 80 22]);
+    ui.UserOutput = uitextarea(P, 'Position',[20 10 300 90], 'Editable','off');
 
-    % Key input (single-line) - visible for XOR; hide if not needed
-    ui.Edit_Key = uieditfield(P,'text','Position',[340 200 200 25], 'Value','key', 'Visible', 'on');
+    % Add a small preview area under output (shared for text or image)
+    ui.PreviewAxes = uiaxes(P, 'Position',[360 50 280 250], 'Visible','off');
+    % ui.PreviewText = uitextarea(P, 'Position',[350 10 280 220], 'Editable','off', 'Visible','off');
 
-    ui.Status = uilabel(P,'Text','Ready','Position',[340 10 260 22]);
+    % Key input (single line) — default hidden; modules can show it
+    % ui.Edit_Key = uieditfield(P,'text', 'Position',[340 200 200 25], 'Visible','off');
+
+    % Status label
+    ui.Status = uilabel(P, 'Text','Ready', 'Position',[450 20 320 30], 'FontSize',16,'FontWeight','bold');
+
+    % Save handles back
+    app.UI.(panelName) = ui;
 end
 
 components\addReusablePreviewArea.m
@@ -58,9 +74,9 @@ function addReusablePreviewArea(app)
     if isempty(app.PreviewAxes) || ~isvalid(app.PreviewAxes)
         app.PreviewAxes = uiaxes(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
     end
-    if isempty(app.PreviewTextArea) || ~isvalid(app.PreviewTextArea)
-        app.PreviewTextArea = uitextarea(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
-    end
+    % if isempty(app.PreviewTextArea) || ~isvalid(app.PreviewTextArea)
+    %     app.PreviewTextArea = uitextarea(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
+    % end
 end
 
 crypt\caesarDecrypt.m
@@ -110,177 +126,184 @@ end
 
 handlers\DecryptHandler.m
 --------------------------------------------------
-function DecryptHandler(app, event)
+function DecryptHandler(app)
     M = app.currentModule;
     ui = app.UI.(M);
 
-    inputIsImage = app.isInputImage;
-
-    if strcmp(M, "HashPanel")
-        ui.Status.Text = "Hash is one-way. No decryption.";
-        return;
-    end
-
+    % Validate inputs
     if app.isInputImage
-        if isempty(app.currentImage)
-            uialert(app.UIFigure, "Load an image first.", "Error");
-            return;
+        if isempty(app.currentImage) && isempty(app.outputImage)
+            uialert(app.UIFigure,'Load an image first.','Error'); return;
         end
     else
-        if isempty(app.currentText)
-            uialert(app.UIFigure, "Enter text first.", "Error");
-            return;
+        if isempty(strtrim(app.currentText))
+            uialert(app.UIFigure,'Enter text first.','Error'); return;
         end
     end
 
-   try
+    try
         switch M
             case 'CaesarPanel'
                 shift = app.ShiftEditField.Value;
                 app.outputText = caesarDecrypt(app.currentText, shift);
                 app.outputImage = [];
-                previewDispatcher(app);
+                ui.UserOutput.Value = app.outputText;
+                % ui.PreviewAxes.Visible = 'off';
+                % ui.PreviewText.Visible = 'on';
+                % ui.PreviewText.Value = splitlines(app.outputText);
                 ui.Status.Text = 'Decrypted (Caesar)';
 
             case 'XORPanel'
-                keyBytes = textToBytes(app.currentKey);
-                if inputIsImage
+                key = app.currentKey;
+                if isempty(key)
+                    uialert(app.UIFigure,'Enter a key in the Key field.','Error'); return;
+                end
+                if app.isInputImage
                     [inBytes, meta] = imageToBytes(app.currentImage);
-                    outBytes = xorBytes(inBytes, keyBytes); % XOR symmetric
+                    outBytes = xorBytes(inBytes, uint8(key)); % XOR symmetric
                     app.outputImage = bytesToImage(outBytes, meta);
                     app.outputText = '';
+                    % ui.PreviewText.Visible = 'off';
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
                     ui.Btn_SaveImage.Visible = 'on';
-                    previewDispatcher(app);
-                    ui.Status.Text = 'Decrypted (XOR, image)';
+                    ui.Status.Text = 'Decrypted (XOR image)';
                 else
                     inBytes = textToBytes(app.currentText);
-                    outBytes = xorBytes(inBytes, keyBytes);
+                    outBytes = xorBytes(inBytes, uint8(key));
                     app.outputText = bytesToText(outBytes);
                     app.outputImage = [];
-                    previewDispatcher(app);
-                    ui.Status.Text = 'Decrypted (XOR, text)';
+                    ui.UserOutput.Value = app.outputText;
+                    ui.PreviewAxes.Visible = 'off';
+                    % ui.PreviewText.Visible = 'off';
+                    % ui.PreviewText.Value = splitlines(app.outputText);
+                    ui.Status.Text = 'Decrypted (XOR text)';
                 end
-
             otherwise
-                uialert(app.UIFigure, 'Decrypt: module not implemented', 'Error');
+                uialert(app.UIFigure,'Decrypt: module not implemented','Error');
         end
     catch ME
         uialert(app.UIFigure, ['Decrypt error: ' ME.message], 'Error');
     end
-
-    % previewDispatcher(app);
-    % ui.Status.Text = "Decrypted.";
 end
 
 handlers\EncryptHandler.m
 --------------------------------------------------
-function EncryptHandler(app, event)
+function EncryptHandler(app)
+% Dispatch encryption depending on active module and input mode.
     M = app.currentModule;
     ui = app.UI.(M);
-    inputIsImage = app.isInputImage;
 
-    % Validate input
-    if inputIsImage
+    % Validate inputs
+    if app.isInputImage
         if isempty(app.currentImage)
-            uialert(app.UIFigure, "Load an image first.", "Error");
-            return;
+            uialert(app.UIFigure,'Load an image first.','Error'); return;
         end
     else
-        if isempty(app.currentText)
-            uialert(app.UIFigure, "Enter text first.", "Error");
-            return;
+        if isempty(strtrim(app.currentText))
+            uialert(app.UIFigure,'Enter text first.','Error'); return;
         end
     end
 
     try
         switch M
             case 'CaesarPanel'
-                % text-only; use char-based Caesar
-                txt = app.currentText;
                 shift = app.ShiftEditField.Value;
-                app.outputText = caesarEncrypt(txt, shift);
+                app.outputText = caesarEncrypt(app.currentText, shift);
                 app.outputImage = [];
-                % show in preview
-                previewDispatcher(app);
+                % show output
+                ui.UserOutput.Value = app.outputText;
+                % ui.PreviewAxes.Visible = 'off';
+                % ui.PreviewText.Visible = 'off';
+                % ui.PreviewText.Value = splitlines(app.outputText);
                 ui.Status.Text = 'Encrypted (Caesar)';
 
             case 'XORPanel'
-                keyBytes = textToBytes(app.currentKey);
-                if inputIsImage
+                % need key
+                key = app.currentKey;
+                if isempty(key)
+                    uialert(app.UIFigure,'Enter a key in the Key field.','Error'); return;
+                end
+                if app.isInputImage
+                    % image -> bytes -> xor -> bytes -> image
                     [inBytes, meta] = imageToBytes(app.currentImage);
-                    outBytes = xorBytes(inBytes, keyBytes);
+                    outBytes = xorBytes(inBytes, uint8(key));
                     app.outputImage = bytesToImage(outBytes, meta);
                     app.outputText = '';
+                    % show image preview and enable save
+                    % ui.PreviewText.Visible = 'off';
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
                     ui.Btn_SaveImage.Visible = 'on';
-                    previewDispatcher(app);
-                    ui.Status.Text = 'Encrypted (XOR, image)';
+                    ui.Status.Text = 'Encrypted (XOR image)';
                 else
+                    % text path: text->bytes->xor->bytes->text
                     inBytes = textToBytes(app.currentText);
-                    outBytes = xorBytes(inBytes, keyBytes);
+                    outBytes = xorBytes(inBytes, uint8(key));
                     app.outputText = bytesToText(outBytes);
                     app.outputImage = [];
-                    previewDispatcher(app);
-                    ui.Status.Text = 'Encrypted (XOR, text)';
+                    ui.UserOutput.Value = app.outputText;
+                    ui.PreviewAxes.Visible = 'off';
+                    % ui.PreviewText.Visible = 'on';
+                    % ui.PreviewText.Value = splitlines(app.outputText);
+                    ui.Status.Text = 'Encrypted (XOR text)';
                 end
-
             otherwise
-                uialert(app.UIFigure, 'Encrypt: module not implemented', 'Error');
+                uialert(app.UIFigure,'Encrypt: module not implemented','Error');
         end
     catch ME
         uialert(app.UIFigure, ['Encrypt error: ' ME.message], 'Error');
     end
-
-    % Update preview
-    
-    % previewDispatcher(app);
-    % ui.Status.Text = "Encrypted.";
 end
 
 handlers\resetModule.m
 --------------------------------------------------
-function resetModule(app, event, panelName)
+function resetModule(app, panelName)
+% Reset UI & app state for the given panel
+    if ~isfield(app.UI, panelName), return; end
     ui = app.UI.(panelName);
 
-    % Clear internal state
+    % internal state
     app.currentText = '';
     app.currentImage = [];
     app.outputText = '';
     app.outputImage = [];
 
-    % Clear input/output fields
-    if isfield(ui,'UserInput')
-        ui.UserInput.Value = '';
+    % UI controls (guarded)
+    if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
+    if isfield(ui,'UserOutput'), ui.UserOutput.Value = ''; end
+    if isfield(ui,'InputPath'), ui.InputPath.Value = ''; end
+    if isfield(ui,'PreviewAxes') 
+        ui.PreviewAxes.Visible = 'off'; 
+        imshow([], 'Parent', ui.PreviewAxes);
+    end
+    % if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
+    if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
+
+    % in image mode InputPath should be non-editable
+    if isfield(ui,'TextRadio') && ui.TextRadio.Value
+        ui.UserInput.Editable = 'on';
+        if isfield(ui,'Btn_LoadImage'), ui.Btn_LoadImage.Visible = 'off'; end
     end
 
-    if isfield(ui,'UserOutput')
-        ui.UserOutput.Value = '';
+    switch panelName
+        case 'CaesarPanel'
+            app.ShiftEditField.Value = 3;
+        case 'XORPanel'
+            app.XORKeyEditField.Value = '';
     end
 
-    % Hide preview
-    app.PreviewAxes.Visible = "off";
-    app.PreviewTextArea.Visible = "off";
-
-    % Reset the mode to TEXT by default
-    if isfield(ui,'TextRadio')
-        ui.TextRadio.Value = true;
-        ui.UserInput.Visible = "on";
-    end
-    if isfield(ui,'Btn_LoadImage')
-        ui.Btn_LoadImage.Visible = "off";
-    end
-    if isfield(ui,'Btn_SaveImage')
-        ui.Btn_SaveImage.Visible = "off";
-    end
-
-    ui.Status.Text = "Reset complete.";
+    ui.Status.Text = 'Reset complete';
 end
-
 
 handlers\updateStatus.m
 --------------------------------------------------
 function updateStatus(app, message)
     try
-        app.(app.currentModule).Lbl_Status.Text = message;
+        ui = app.UI.(app.currentModule);
+        ui.Status.Text = message;
+    catch
+        % fallback: no-op
     end
 end
 
@@ -386,49 +409,146 @@ function catchTextInput(app, panelName)
     
 end
 
+io\loadImageFile.m
+--------------------------------------------------
+function loadImageFile(app, panelName)
+    ui = app.UI.(panelName);
+    [f,p] = uigetfile({'*.png;*.jpg;*.jpeg;*.bmp','Image Files'});
+    if isequal(f,0), return; end
+    full = fullfile(p,f);
+    try
+        img = imread(full);
+    catch
+        uialert(app.UIFigure,'Cannot read image','Error'); return;
+    end
+    app.currentImage = img;
+    ui.InputPath.Value = full;    % show path in input field (non-editable in image mode)
+    app.outputImage = [];
+    % preview loaded image in panel preview
+    % ui.PreviewText.Visible = 'off';
+    ui.PreviewAxes.Visible = 'on';
+    imshow(app.currentImage, 'Parent', ui.PreviewAxes);
+    ui.Status.Text = 'Image loaded';
+end
+
+io\saveImageFile.m
+--------------------------------------------------
+function saveImageFile(app, panelName)
+    ui = app.UI.(panelName);
+    if isempty(app.outputImage)
+        uialert(app.UIFigure,'No output image to save','Error'); return;
+    end
+    [f,p] = uiputfile({'*.png';'*.jpg'}, 'Save Image As');
+    if isequal(f,0), return; end
+    outpath = fullfile(p,f);
+    try
+        imwrite(app.outputImage, outpath);
+        ui.Status.Text = 'Image saved';
+    catch
+        uialert(app.UIFigure,'Failed to save image','Error');
+    end
+end
+
 io\switchInputMode.m
 --------------------------------------------------
 function switchInputMode(app, event, panelName)
-    % event.NewValue.Text == 'Image Input' or 'Text Input'
+% Switch between Text and Image input modes in a panel.
     ui = app.UI.(panelName);
-    if contains(event.NewValue.Text,'Image')
+    new = event.NewValue.Text;
+    if contains(new,'Image')
         app.isInputImage = true;
+        % enable image controls
+        ui.UserInput.Editable = 'off';
         ui.UserInput.Visible = 'off';
         ui.Btn_LoadImage.Visible = 'on';
-        ui.UserOutput.Visible = 'off';
-        app.currentText = '';
+        ui.Btn_SaveImage.Visible = 'off'; % only shown after output image present
+        ui.InputPath.Visible = 'on';
+        ui.InputPath.Editable = 'off';
+        ui.InputPath.Value = ''; % will be set when image loaded
+        ui.UserOutput.Value = ''; 
     else
         app.isInputImage = false;
         ui.UserInput.Visible = 'on';
-        ui.Btn_LoadImage.Visible = 'off';
-        ui.UserOutput.Visible = 'on';
-        app.currentImage = [];
+        ui.UserInput.Editable = 'on';
+        if isfield(ui,'Btn_LoadImage'), ui.Btn_LoadImage.Visible = 'off'; end
+        if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
+        ui.InputPath.Visible = 'off';
+        ui.InputPath.Editable = 'off';
     end
+    resetModule(app,panelName);
 end
 
 preview\previewDispatcher.m
 --------------------------------------------------
 function previewDispatcher(app)
-% PREVIEWDISPATCHER   Show app.outputImage (preferred) or app.outputText.
-    % hide both first
-    try app.PreviewAxes.Visible = 'off'; catch; end
-    try app.PreviewTextArea.Visible = 'off'; catch; end
+% Shows ONLY what is appropriate for current mode (text or image)
 
-    if ~isempty(app.outputImage)
-        app.PreviewTextArea.Visible = 'off';
-        app.PreviewAxes.Visible = 'on';
-        imshow(app.outputImage, 'Parent', app.PreviewAxes);
+    % Hide everything first
+    try app.PreviewAxes.Visible = 'off'; catch; end
+    % try app.PreviewTextArea.Visible = 'off'; catch; end
+
+    M = app.currentModule;
+    ui = app.UI.(M);
+
+    % ============================
+    % IMAGE MODE
+    % ============================
+    if app.isInputImage
+        % Never show text areas in image mode
+        ui.UserOutput.Visible = 'off';
+
+        if ~isempty(app.outputImage)
+            % Show OUTPUT image
+            app.PreviewAxes.Visible = 'on';
+            imshow(app.outputImage, 'Parent', app.PreviewAxes);
+            return;
+        end
+
+        if ~isempty(app.currentImage)
+            % Show INPUT image if no output yet
+            app.PreviewAxes.Visible = 'on';
+            imshow(app.currentImage, 'Parent', app.PreviewAxes);
+            return;
+        end
+
         return;
     end
 
+    % ============================
+    % TEXT MODE
+    % ============================
+    % Never use PreviewTextArea at all for text modules
+    % app.PreviewTextArea.Visible = 'off';
+    app.PreviewAxes.Visible = 'off';
+
+    % Only show text inside the module's UserOutput text area
     if ~isempty(app.outputText)
-        app.PreviewAxes.Visible = 'off';
-        app.PreviewTextArea.Visible = 'on';
-        % preview text as cellstr (TextArea expects cell or string array)
-        app.PreviewTextArea.Value = cellstr(app.outputText);
-        return;
+        ui.UserOutput.Value = app.outputText;
     end
 end
+
+
+% function previewDispatcher(app)
+% % PREVIEWDISPATCHER   Show app.outputImage (preferred) or app.outputText.
+%     % hide both first
+%     try app.PreviewAxes.Visible = 'off'; catch; end
+%     try app.PreviewTextArea.Visible = 'off'; catch; end
+% 
+%     if ~isempty(app.outputImage)
+%         app.PreviewTextArea.Visible = 'off';
+%         app.PreviewAxes.Visible = 'on';
+%         imshow(app.outputImage, 'Parent', app.PreviewAxes);
+%         return;
+%     end
+% 
+%     if ~isempty(app.outputText)
+%         app.PreviewAxes.Visible = 'off';
+%         app.PreviewTextArea.Visible = 'on';
+%         % preview text as cellstr (TextArea expects cell or string array)
+%         app.PreviewTextArea.Value = cellstr(app.outputText);
+%         return;
+%     end
+% end
 
 preview\previewImage.m
 --------------------------------------------------
@@ -438,9 +558,9 @@ end
 
 preview\previewText.m
 --------------------------------------------------
-function previewText(app, txt)
-    app.TextArea.Value = splitlines(txt);
-end
+% function previewText(app, txt)
+%     app.TextArea.Value = splitlines(txt);
+% end
 
 mainApp.mlapp
 --------------------------------------------------

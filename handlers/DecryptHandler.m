@@ -26,7 +26,7 @@ function DecryptHandler(app)
                 ui.Status.Text = 'Decrypted (Caesar)';
 
             case 'XORPanel'
-                key = ui.Edit_Key.Value;
+                key = app.currentKey;
                 if isempty(key)
                     uialert(app.UIFigure,'Enter a key in the Key field.','Error'); return;
                 end
@@ -35,7 +35,7 @@ function DecryptHandler(app)
                     outBytes = xorBytes(inBytes, uint8(key)); % XOR symmetric
                     app.outputImage = bytesToImage(outBytes, meta);
                     app.outputText = '';
-                    ui.PreviewText.Visible = 'off';
+                    % ui.PreviewText.Visible = 'off';
                     ui.PreviewAxes.Visible = 'on';
                     imshow(app.outputImage, 'Parent', ui.PreviewAxes);
                     ui.Btn_SaveImage.Visible = 'on';
@@ -47,8 +47,8 @@ function DecryptHandler(app)
                     app.outputImage = [];
                     ui.UserOutput.Value = app.outputText;
                     ui.PreviewAxes.Visible = 'off';
-                    ui.PreviewText.Visible = 'on';
-                    ui.PreviewText.Value = splitlines(app.outputText);
+                    % ui.PreviewText.Visible = 'off';
+                    % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Decrypted (XOR text)';
                 end
             otherwise

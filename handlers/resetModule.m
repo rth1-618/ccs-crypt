@@ -13,10 +13,12 @@ function resetModule(app, panelName)
     if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
     if isfield(ui,'UserOutput'), ui.UserOutput.Value = ''; end
     if isfield(ui,'InputPath'), ui.InputPath.Value = ''; end
-    if isfield(ui,'PreviewAxes'), ui.PreviewAxes.Visible = 'off'; end
-    if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
+    if isfield(ui,'PreviewAxes') 
+        ui.PreviewAxes.Visible = 'off'; 
+        imshow([], 'Parent', ui.PreviewAxes);
+    end
+    % if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
     if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
-    if isfield(ui,'Edit_Key'), ui.Edit_Key.Visible = 'off'; ui.Edit_Key.Value = ''; end
 
     % in image mode InputPath should be non-editable
     if isfield(ui,'TextRadio') && ui.TextRadio.Value
@@ -27,6 +29,8 @@ function resetModule(app, panelName)
     switch panelName
         case 'CaesarPanel'
             app.ShiftEditField.Value = 3;
+        case 'XORPanel'
+            app.XORKeyEditField.Value = '';
     end
 
     ui.Status.Text = 'Reset complete';

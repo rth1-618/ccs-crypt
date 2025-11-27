@@ -3,7 +3,7 @@ function previewDispatcher(app)
 
     % Hide everything first
     try app.PreviewAxes.Visible = 'off'; catch; end
-    try app.PreviewTextArea.Visible = 'off'; catch; end
+    % try app.PreviewTextArea.Visible = 'off'; catch; end
 
     M = app.currentModule;
     ui = app.UI.(M);
@@ -36,7 +36,7 @@ function previewDispatcher(app)
     % TEXT MODE
     % ============================
     % Never use PreviewTextArea at all for text modules
-    app.PreviewTextArea.Visible = 'off';
+    % app.PreviewTextArea.Visible = 'off';
     app.PreviewAxes.Visible = 'off';
 
     % Only show text inside the module's UserOutput text area

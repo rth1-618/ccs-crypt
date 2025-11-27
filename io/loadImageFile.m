@@ -12,7 +12,7 @@ function loadImageFile(app, panelName)
     ui.InputPath.Value = full;    % show path in input field (non-editable in image mode)
     app.outputImage = [];
     % preview loaded image in panel preview
-    ui.PreviewText.Visible = 'off';
+    % ui.PreviewText.Visible = 'off';
     ui.PreviewAxes.Visible = 'on';
     imshow(app.currentImage, 'Parent', ui.PreviewAxes);
     ui.Status.Text = 'Image loaded';
