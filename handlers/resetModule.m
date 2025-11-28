@@ -39,6 +39,8 @@ function resetModule(app, panelName)
         case 'DESPanel'
             app.DESKeyEditField.Value='';
             app.DESKeyTextArea.Value='';
+        case 'HMACPanel'
+            app.HMACKeyEditField.Value='';
     end
 
     ui.Status.Text = 'Reset complete';

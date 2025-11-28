@@ -118,6 +118,9 @@ function EncryptHandler(app)
                     ui.Status.Text = 'Encrypted (DES text, base64 shown)';
                 end
 
+            case 'HMACPanel'
+                HMACHandler(app);
+                
             otherwise
                 uialert(app.UIFigure,'Encrypt: module not implemented','Error');
         end

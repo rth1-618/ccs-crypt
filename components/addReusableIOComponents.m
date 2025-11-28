@@ -39,12 +39,21 @@ function addReusableIOComponents(app, panelName, allowImage)
     end
 
     % Encrypt / Decrypt / Reset buttons
-    ui.Btn_Encrypt = uibutton(P, 'Text','Encrypt', 'Position',[20 130 100 35], ...
+    label = 'Encrypt'; % default
+
+    if strcmp(panelName,'HMACPanel')
+        label = 'Generate HMAC';
+    end
+    ui.Btn_Encrypt = uibutton(P, 'Text',label, 'Position',[20 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)EncryptHandler(app));
     ui.Btn_Decrypt = uibutton(P, 'Text','Decrypt', 'Position',[140 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)DecryptHandler(app));
     ui.Btn_Reset   = uibutton(P, 'Text','Reset', 'Position',[260 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)resetModule(app,panelName));
+    if strcmp(panelName,'HMACPanel')
+        ui.Btn_Decrypt.Visible = 'off';
+        ui.Btn_Reset.Position = [140 130 100 35];
+    end
 
     % Output area (single textarea) — used for text outputs
     uilabel(P,'Text','Output:','Position',[20 100 80 22]);
