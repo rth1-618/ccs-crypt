@@ -1,7 +1,7 @@
-function switchInputMode(app, event, panelName)
+function switchInputMode(app, new, panelName)
 % Switch between Text and Image input modes in a panel.
     ui = app.UI.(panelName);
-    new = event.NewValue.Text;
+    % new = event.NewValue.Text;
     if contains(new,'Image')
         app.isInputImage = true;
         % enable image controls

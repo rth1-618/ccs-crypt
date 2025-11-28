@@ -13,7 +13,8 @@ function DecryptHandler(app)
         end
     end
 
-    ui.Status.Text = 'Decrypting...';
+    updateStatus(app, "Decrypting...");
+    
     try
         switch M
             case 'CaesarPanel'

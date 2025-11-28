@@ -15,7 +15,7 @@ function addReusableIOComponents(app, panelName, allowImage)
     % Input type radio (for modules that accept images)
     if allowImage
         ui.InputTypeGroup = uibuttongroup(P, 'Position',[20 340 300 40], ...
-            'SelectionChangedFcn', @(bg,event)switchInputMode(app,event,panelName));
+            'SelectionChangedFcn', @(bg,event)switchInputMode(app,event.NewValue.Text,panelName));
         ui.TextRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Text Input', 'Position',[10 8 100 22], 'Value', true);
         ui.ImageRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Image Input', 'Position',[120 8 120 22]);
     end

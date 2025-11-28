@@ -14,7 +14,7 @@ function EncryptHandler(app)
         end
     end
 
-    ui = Loading(ui);
+    updateStatus(app, "Encrypting...");
 
     try
         switch M
@@ -124,8 +124,4 @@ function EncryptHandler(app)
     catch ME
         uialert(app.UIFigure, ['Encrypt error: ' ME.message], 'Error');
     end
-end
-
-function ui = Loading(ui)
-ui.Status.Text = 'Encrypting...';
 end

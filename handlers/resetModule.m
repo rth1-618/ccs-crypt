@@ -10,6 +10,7 @@ function resetModule(app, panelName)
     app.outputImage = [];
     app.currentKey = '';
 
+
     % UI controls (guarded)
     if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
     if isfield(ui,'UserOutput'), ui.UserOutput.Value = ''; end
