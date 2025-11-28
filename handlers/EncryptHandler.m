@@ -14,6 +14,8 @@ function EncryptHandler(app)
         end
     end
 
+    ui = Loading(ui);
+
     try
         switch M
             case 'CaesarPanel'
@@ -73,10 +75,57 @@ function EncryptHandler(app)
                 app.OTPKeyEditField.Value = keyStr;
             
                 ui.Status.Text = 'Encrypted (OTP)';
+
+            case 'DESPanel'
+                ui = app.UI.(M);
+                % Get user key (7 chars) or generate
+                keyStr = '';
+                if ~isempty(app.DESKeyEditField.Value)
+                    keyStr = char(app.DESKeyEditField.Value);
+                end
+                if isempty(keyStr)
+                    key7 = uint8(randi([32,126],7,1)); % printable random if you want
+                    keyStr = char(key7');
+                    app.DESKeyEditField.Value = keyStr;
+                else
+                    if numel(keyStr) ~= 7
+                        uialert(app.UIFigure,'Key must be exactly 7 characters','Error'); return;
+                    end
+                    key7 = uint8(keyStr(:));
+                end
+            
+                % Show key ASCII to user
+                app.currentKey = keyStr;
+                app = showKeyMatrix(key7,app);
+            
+                % Prepare input bytes depending on mode
+                if app.isInputImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = desEncryptECB(inBytes, key7);
+                    app.outputImage = bytesToImage(outBytes, meta);
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
+                    ui.Btn_SaveImage.Visible = 'on';
+                    ui.Status.Text = 'Encrypted (DES image)';
+                else
+                    % text path: convert text->bytes then encrypt; display base64 ciphertext
+                    inBytes = textToBytes(app.currentText);
+                    outBytes = desEncryptECB(inBytes, key7);
+                    % show base64 for display purposes
+                    cipherB64 = matlab.net.base64encode(outBytes);
+                    app.outputText = char(cipherB64);
+                    ui.UserOutput.Value = app.outputText;
+                    ui.Status.Text = 'Encrypted (DES text, base64 shown)';
+                end
+
             otherwise
                 uialert(app.UIFigure,'Encrypt: module not implemented','Error');
         end
     catch ME
         uialert(app.UIFigure, ['Encrypt error: ' ME.message], 'Error');
     end
+end
+
+function ui = Loading(ui)
+ui.Status.Text = 'Encrypting...';
 end

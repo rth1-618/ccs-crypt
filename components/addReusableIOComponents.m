@@ -33,9 +33,9 @@ function addReusableIOComponents(app, panelName, allowImage)
     if allowImage
         % ui.InputPath.Visible = 'on';
         ui.Btn_LoadImage = uibutton(P, 'Text','Load Image', 'Position',[20 250 120 30], ...
-            'ButtonPushedFcn', @(btn,event)Btn_LoadImagePushed(app,event,panelName), 'Visible','on');
+            'ButtonPushedFcn', @(btn,event)loadImageFile(app, panelName), 'Visible','on');
         ui.Btn_SaveImage = uibutton(P, 'Text','Save Image', 'Position',[160 250 120 30], ...
-            'ButtonPushedFcn', @(btn,event)Btn_SaveImagePushed(app,event,panelName), 'Visible','off');
+            'ButtonPushedFcn', @(btn,event)saveImageFile(app, panelName), 'Visible','off');
     end
 
     % Encrypt / Decrypt / Reset buttons

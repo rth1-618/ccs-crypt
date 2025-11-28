@@ -13,6 +13,7 @@ function DecryptHandler(app)
         end
     end
 
+    ui.Status.Text = 'Decrypting...';
     try
         switch M
             case 'CaesarPanel'
@@ -72,6 +73,47 @@ function DecryptHandler(app)
                 app.outputText = plain;
                 ui.UserOutput.Value = plain;
                 ui.Status.Text = 'Decrypted (OTP)';
+
+            case 'DESPanel'
+                ui = app.UI.(M);
+                % key must be present in app.currentKey or in DESKeyEditField
+                keyStr = app.currentKey;
+                if ~isempty(app.DESKeyEditField.Value)
+                    keyStr = char(app.DESKeyEditField.Value);
+                end
+                % if isempty(keyStr)
+                %     keyStr = char(app.DESKeyEditField.Value);
+                % end
+                if isempty(keyStr) || numel(keyStr) ~= 7
+                    uialert(app.UIFigure,'Provide 7-char key or encrypt to generate it','Error'); return;
+                end
+                key7 = uint8(keyStr(:));
+                app = showKeyMatrix(key7,app);
+            
+                if app.isInputImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = desDecryptECB(inBytes, key7);
+                    app.outputImage = bytesToImage(outBytes, meta); % meta must be known — store when loading
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
+                    ui.Btn_SaveImage.Visible = 'on';
+                    ui.Status.Text = 'Decrypted (DES image)';
+                else
+                    % text: input is base64 display; convert base64 -> bytes then decrypt -> text
+                    if isempty(app.currentText)
+                        uialert(app.UIFigure,'Paste base64 ciphertext into input','Error'); return;
+                    end
+                    try
+                        cipherBytes = matlab.net.base64decode(char(app.currentText));
+                        outBytes = desDecryptECB(cipherBytes, key7);
+                        app.outputText = bytesToText(outBytes);
+                        ui.UserOutput.Value = app.outputText;
+                        ui.Status.Text = 'Decrypted (DES text)';
+                    catch ME
+                        uialert(app.UIFigure, ['DES decrypt error: ' ME.message], 'Error');
+                    end
+                end
+
             otherwise
                 uialert(app.UIFigure,'Decrypt: module not implemented','Error');
         end

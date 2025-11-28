@@ -35,6 +35,9 @@ function resetModule(app, panelName)
         case 'OTPPanel'
             app.currentKey = '';
             app.OTPKeyEditField.Value = '';
+        case 'DESPanel'
+            app.DESKeyEditField.Value='';
+            app.DESKeyTextArea.Value='';
     end
 
     ui.Status.Text = 'Reset complete';
