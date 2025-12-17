@@ -115,6 +115,22 @@ function DecryptHandler(app)
                     end
                 end
 
+                case 'RSAPanel'
+                    if ~app.RSA.hasPrivateKey
+                        uialert(app.UIFigure,'Load private key','RSA');
+                        return;
+                    end
+                
+                    bytes = matlab.net.base64decode(app.currentText);
+                    cipherNums = str2double(split(string(char(bytes))));
+                
+                    plain = rsaDecryptText(cipherNums, app.RSA.d, app.RSA.n);
+                
+                    app.outputText = plain;
+                    ui.UserOutput.Value = splitlines(plain);
+                    ui.Status.Text = 'Decrypted (RSA)';
+
+
             otherwise
                 uialert(app.UIFigure,'Decrypt: module not implemented','Error');
         end

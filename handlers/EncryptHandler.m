@@ -120,6 +120,23 @@ function EncryptHandler(app)
 
             case 'HMACPanel'
                 HMACHandler(app);
+
+            case 'RSAPanel'
+                if ~app.RSA.hasPublicKey
+                    uialert(app.UIFigure,'Generate keys first','RSA');
+                    return;
+                end
+            
+                txt = app.currentText;
+                cipherNums = rsaEncryptText(txt, app.RSA.e, app.RSA.n);
+            
+                % display as base64 text
+                bytes = uint8(char(join(string(cipherNums),' ')));
+                app.outputText = matlab.net.base64encode(bytes);
+            
+                ui.UserOutput.Value = splitlines(app.outputText);
+                ui.Status.Text = 'Encrypted (RSA)';
+
                 
             otherwise
                 uialert(app.UIFigure,'Encrypt: module not implemented','Error');

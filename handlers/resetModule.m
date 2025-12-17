@@ -41,6 +41,43 @@ function resetModule(app, panelName)
             app.DESKeyTextArea.Value='';
         case 'HMACPanel'
             app.HMACKeyEditField.Value='';
+        case 'RSAPanel'
+            app.pEditField.Value = 17;
+            app.qEditField.Value = 19;
+            app.pStatusLabel.Text = '';
+            app.qStatusLabel.Text = '';
+            app.nLabel.Text = " n = ___";
+            app.eDropDown.Enable = 'off';
+            app.eDropDown.Items = {};
+            app.eDropDown.Value = {};
+            app.GenerateKeysButton.Enable = 'off';
+            app.UI.(panelName).Btn_Encrypt.Enable = 'off';
+            app.UI.(panelName).Btn_Decrypt.Enable = 'off';
+
+            validateRSAInputs(app);
+        case 'DiffHellPanel'
+            app.DH = struct('p',[],'g',[],'a',[],'b',[],'A',[],'B',[],'S_A',[],'S_B',[]);
+            app.pDHEditField.Value = 0;
+            app.gDHEditField.Value = 0;
+            app.BobPrivateEditField.Value = 0;
+            app.AlicePrivateEditField.Value = 0;
+            app.AlicePublicLabel.Text = '';
+            app.BobPublicLabel.Text = '';
+            app.AliceSharedLabel.Text = '';
+            app.BobSharedLabel.Text = '';
+            app.BobsComputeSecretKeyButton.Enable = 'off';
+            app.AlicesComputeSecretKeyButton.Enable = 'off';
+
+            app.PublishBtoAliceButton.Enable = 'off';
+            app.PublishAtoBobButton.Enable = 'off';
+
+            app.UI.(panelName).Btn_Encrypt.Visible = 'off';
+            app.UI.(panelName).Btn_Decrypt.Visible = 'off';
+            app.UI.(panelName).UserInput.Visible = 'off';
+            app.UI.(panelName).UserOutput.Visible = 'off';
+
+        case 'EnvelopePanel'
+
     end
 
     ui.Status.Text = 'Reset complete';

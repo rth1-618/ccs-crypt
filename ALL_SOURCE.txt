@@ -18,7 +18,7 @@ function addReusableIOComponents(app, panelName, allowImage)
     % Input type radio (for modules that accept images)
     if allowImage
         ui.InputTypeGroup = uibuttongroup(P, 'Position',[20 340 300 40], ...
-            'SelectionChangedFcn', @(bg,event)switchInputMode(app,event,panelName));
+            'SelectionChangedFcn', @(bg,event)switchInputMode(app,event.NewValue.Text,panelName));
         ui.TextRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Text Input', 'Position',[10 8 100 22], 'Value', true);
         ui.ImageRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Image Input', 'Position',[120 8 120 22]);
     end
@@ -36,18 +36,27 @@ function addReusableIOComponents(app, panelName, allowImage)
     if allowImage
         % ui.InputPath.Visible = 'on';
         ui.Btn_LoadImage = uibutton(P, 'Text','Load Image', 'Position',[20 250 120 30], ...
-            'ButtonPushedFcn', @(btn,event)Btn_LoadImagePushed(app,event,panelName), 'Visible','on');
+            'ButtonPushedFcn', @(btn,event)loadImageFile(app, panelName), 'Visible','on');
         ui.Btn_SaveImage = uibutton(P, 'Text','Save Image', 'Position',[160 250 120 30], ...
-            'ButtonPushedFcn', @(btn,event)Btn_SaveImagePushed(app,event,panelName), 'Visible','off');
+            'ButtonPushedFcn', @(btn,event)saveImageFile(app, panelName), 'Visible','off');
     end
 
     % Encrypt / Decrypt / Reset buttons
-    ui.Btn_Encrypt = uibutton(P, 'Text','Encrypt', 'Position',[20 130 100 35], ...
+    label = 'Encrypt'; % default
+
+    if strcmp(panelName,'HMACPanel')
+        label = 'Generate HMAC';
+    end
+    ui.Btn_Encrypt = uibutton(P, 'Text',label, 'Position',[20 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)EncryptHandler(app));
     ui.Btn_Decrypt = uibutton(P, 'Text','Decrypt', 'Position',[140 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)DecryptHandler(app));
     ui.Btn_Reset   = uibutton(P, 'Text','Reset', 'Position',[260 130 100 35], ...
         'ButtonPushedFcn', @(btn,event)resetModule(app,panelName));
+    if strcmp(panelName,'HMACPanel')
+        ui.Btn_Decrypt.Visible = 'off';
+        ui.Btn_Reset.Position = [140 130 100 35];
+    end
 
     % Output area (single textarea) — used for text outputs
     uilabel(P,'Text','Output:','Position',[20 100 80 22]);
@@ -55,11 +64,7 @@ function addReusableIOComponents(app, panelName, allowImage)
 
     % Add a small preview area under output (shared for text or image)
     ui.PreviewAxes = uiaxes(P, 'Position',[360 50 280 250], 'Visible','off');
-    % ui.PreviewText = uitextarea(P, 'Position',[350 10 280 220], 'Editable','off', 'Visible','off');
-
-    % Key input (single line) — default hidden; modules can show it
-    % ui.Edit_Key = uieditfield(P,'text', 'Position',[340 200 200 25], 'Visible','off');
-
+   
     % Status label
     ui.Status = uilabel(P, 'Text','Ready', 'Position',[450 20 320 30], 'FontSize',16,'FontWeight','bold');
 
@@ -67,16 +72,398 @@ function addReusableIOComponents(app, panelName, allowImage)
     app.UI.(panelName) = ui;
 end
 
-components\addReusablePreviewArea.m
+crypt\des\addParityBits.m
 --------------------------------------------------
-function addReusablePreviewArea(app)
-% create PreviewAxes and PreviewTextArea only if not already present
-    if isempty(app.PreviewAxes) || ~isvalid(app.PreviewAxes)
-        app.PreviewAxes = uiaxes(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
+function [key8, bitMatrix] = addParityBits(key7)
+% ADDPARITYBITS Insert parity bits to 7-byte key producing 8-byte DES key.
+% key7 : 7-element uint8 vector OR 7-char string
+% key8 : 8-element uint8 (DES key, odd parity per byte)
+% bitMatrix : 8x8 matrix of 0/1 bits (row-wise representation of key8)
+
+    if ischar(key7), key7 = uint8(key7); end
+    key7 = uint8(key7(:)); % column 7x1
+
+    if numel(key7) ~= 7
+        error('addParityBits: require exactly 7 input bytes (56 bits).');
     end
-    % if isempty(app.PreviewTextArea) || ~isvalid(app.PreviewTextArea)
-    %     app.PreviewTextArea = uitextarea(app.UIFigure, 'Position', [420 80 360 320], 'Visible', 'off');
-    % end
+
+    % Build 56-bit stream (MSB-first for each byte)
+    bits = false(1,56);
+    idx = 1;
+    for i=1:7
+        b = key7(i);
+        for bitpos = 8:-1:1  % MSB to LSB
+            bits(idx) = bitget(b, bitpos);
+            idx = idx + 1;
+            if idx>56, break; end
+        end
+    end
+    bits = bits(1:56); % ensure length
+
+    % Pack into 8 bytes: each byte takes 7 bits (msb..lsb) into bits 8..2; bit1 is parity
+    key8 = zeros(8,1,'uint8');
+    for i=1:8
+        startBit = (i-1)*7 + 1;
+        block = bits(startBit : startBit+6); % 7 bits
+        % place in positions 8..2
+        byteVal = uint8(0);
+        for k=1:7
+            if block(k)
+                pos = 9 - k; % k=1 -> bit8, k=7 -> bit2
+                byteVal = bitor(byteVal, bitshift(uint8(1), pos-1));
+            end
+        end
+        % compute parity bit (LSB) = 1 if number of ones in byteVal is even (to make total odd)
+        onesCount = sum(bitget(byteVal,1:8));
+        % currently bit1 is 0; count includes bits 2..8
+        if mod(onesCount,2) == 0
+            parity = 1;
+        else
+            parity = 0;
+        end
+        byteVal = bitor(byteVal, uint8(parity)); % set LSB
+        key8(i) = byteVal;
+    end
+
+    % bitMatrix 8x8 (rows are bytes MSB->LSB)
+    bitMatrix = zeros(8,8);
+    for i=1:8
+        for b=1:8
+            bitMatrix(i,b) = bitget(key8(i), 9-b); % bitget pos: 8..1 map to columns 1..8
+        end
+    end
+    % disp('key8');
+    % disp(key8);
+    % disp('base64 key8');
+    % disp(matlab.net.base64encode(key8));
+end
+
+crypt\des\desBlock.m
+--------------------------------------------------
+function outBlock = desBlock(inBlock, subkeys, mode)
+% DESBLOCK process one 8-byte block using subkeys; mode='encrypt' or 'decrypt'
+% inBlock : 1x8 uint8
+% outBlock : 1x8 uint8
+
+if nargin<3, mode='encrypt'; end
+T = desTables();
+
+% convert to 64-bit vector
+bits = false(1,64);
+idx=1;
+for i=1:8
+    b = inBlock(i);
+    for pos=8:-1:1
+        bits(idx) = bitget(b,pos);
+        idx=idx+1;
+    end
+end
+
+% initial permutation
+bits = bits(T.IP);
+
+L = bits(1:32);
+R = bits(33:64);
+
+% For encrypt use subkeys 1..16; for decrypt use reversed order
+if strcmpi(mode,'encrypt')
+    keys = subkeys;
+else
+    keys = flipud(subkeys);
+end
+
+for r=1:16
+    % Expansion E: expand R (32) to 48
+    ER = R(T.E);
+    % XOR with subkey
+    SR = xor(ER, keys(r,:));
+    % S-box substitution -> 32 bits
+    out32 = false(1,32);
+    pos = 1;
+    for sIdx = 1:8
+        block6 = SR((sIdx-1)*6 + (1:6));
+        % compute row and col (bits: b1 b2 b3 b4 b5 b6)
+        row = block6(1)*2 + block6(6)*1; % b1b6
+        col = block6(2)*8 + block6(3)*4 + block6(4)*2 + block6(5)*1;
+        val = T.S{sIdx}(row+1, col+1); % matlab index
+        % convert val (0..15) to 4 bits MSB first
+        for b=4:-1:1
+            out32(pos) = bitget(val,b);
+            pos = pos + 1;
+        end
+    end
+    % permutation P
+    Pout = out32(T.P);
+    % feistel
+    newR = xor(L, Pout);
+    L = R;
+    R = newR;
+end
+
+% preoutput concat R,L (note swap)
+pre = [R L];
+
+% final permutation FP
+cipherBits = pre(T.FP);
+
+% convert bits -> 8 bytes
+outBlock = zeros(1,8,'uint8');
+idx = 1;
+for i=1:8
+    val = uint8(0);
+    for pos=8:-1:1
+        if cipherBits(idx)
+            val = bitor(val, bitshift(uint8(1), pos-1));
+        end
+        idx = idx+1;
+    end
+    outBlock(i) = val;
+end
+end
+
+crypt\des\desDecryptECB.m
+--------------------------------------------------
+function plainBytes = desDecryptECB(cipherBytes, key7)
+% DESDECRYPTECB Decrypt DES-ECB (zero padded).
+if ischar(key7), key7 = uint8(key7); end
+key7 = uint8(key7(:));
+if numel(key7) ~= 7, error('DES key must be 7 bytes'); end
+
+[key8, ~] = addParityBits(key7);
+subkeys = desGenerateSubkeys(key8);
+
+cipherBytes = uint8(cipherBytes(:));
+if mod(numel(cipherBytes),8) ~= 0
+    error('Cipher length must be multiple of 8');
+end
+
+nBlocks = numel(cipherBytes)/8;
+plainPadded = zeros(nBlocks*8,1,'uint8');
+for i=1:nBlocks
+    block = cipherBytes((i-1)*8 + (1:8))';
+    out = desBlock(block, subkeys, 'decrypt');
+    plainPadded((i-1)*8 + (1:8)) = out(:);
+end
+
+% remove trailing zeros (note ambiguous if original ended in zeros)
+plainBytes = unpadZero(plainPadded);
+end
+
+crypt\des\desEncryptECB.m
+--------------------------------------------------
+function cipherBytes = desEncryptECB(plainBytes, key7)
+% DESENCRYPTECB Encrypt a uint8 vector using DES-ECB with zero padding.
+% plainBytes : uint8 column vector or row
+% key7 : 7-char string or 7x1 uint8. If empty, a random key7 is generated and returned in second output.
+% Returns cipherBytes (uint8 vector) same length as padded input.
+
+if ischar(key7), key7 = uint8(key7); end
+if isempty(key7)
+    key7 = uint8(randi([0 255],7,1));
+end
+key7 = uint8(key7(:));
+if numel(key7) ~= 7, error('DES key must be 7 bytes'); end
+
+% form parity key
+[key8, ~] = addParityBits(key7);
+
+% generate subkeys
+subkeys = desGenerateSubkeys(key8);
+
+% pad input
+plainBytes = uint8(plainBytes(:));
+padded = padZero(plainBytes,8);
+
+% process per-block
+nBlocks = numel(padded)/8;
+cipherBytes = zeros(nBlocks*8,1,'uint8');
+for i=1:nBlocks
+    block = padded((i-1)*8 + (1:8))';
+    out = desBlock(block, subkeys, 'encrypt');
+    cipherBytes((i-1)*8 + (1:8)) = out(:);
+end
+end
+
+crypt\des\desGenerateSubkeys.m
+--------------------------------------------------
+function subkeys = desGenerateSubkeys(key8)
+% DESGENERATESUBKEYS produce 16 subkeys (48-bit) for DES from 8-byte key
+% key8 : 8x1 uint8 vector (including parity bits)
+% subkeys : 16 x 48 logical matrix (or numeric 0/1)
+
+T = desTables();
+
+% Convert key8 -> 64-bit vector (MSB-first)
+kbits = false(1,64);
+idx=1;
+for i=1:8
+    b = key8(i);
+    for pos = 8:-1:1
+        kbits(idx) = bitget(b,pos);
+        idx = idx+1;
+    end
+end
+
+% Apply PC-1 (select 56 bits)
+K56 = kbits(T.PC1);  % 56 logicals
+C = K56(1:28);
+D = K56(29:56);
+
+subkeys = false(16,48);
+for round=1:16
+    % left shifts
+    shift = T.SHIFTS(round);
+    C = circshift(C, -shift);
+    D = circshift(D, -shift);
+    CD = [C D];
+    % apply PC-2 to get 48 bits
+    sub = CD(T.PC2);
+    subkeys(round,:) = sub;
+end
+end
+
+crypt\des\desTables.m
+--------------------------------------------------
+function T = desTables()
+% DESTABLES  DES S-boxes and permutations (IP,FP,E,P,PC1,PC2,shifts)
+% Returns a struct with fields used by DES implementation.
+
+T.IP = [...
+    58 50 42 34 26 18 10 2 ...
+    60 52 44 36 28 20 12 4 ...
+    62 54 46 38 30 22 14 6 ...
+    64 56 48 40 32 24 16 8 ...
+    57 49 41 33 25 17 9 1 ...
+    59 51 43 35 27 19 11 3 ...
+    61 53 45 37 29 21 13 5 ...
+    63 55 47 39 31 23 15 7]';
+
+T.FP = [...
+    40 8 48 16 56 24 64 32 ...
+    39 7 47 15 55 23 63 31 ...
+    38 6 46 14 54 22 62 30 ...
+    37 5 45 13 53 21 61 29 ...
+    36 4 44 12 52 20 60 28 ...
+    35 3 43 11 51 19 59 27 ...
+    34 2 42 10 50 18 58 26 ...
+    33 1 41 9 49 17 57 25]';
+
+T.E = [...
+    32 1 2 3 4 5 ...
+    4 5 6 7 8 9 ...
+    8 9 10 11 12 13 ...
+    12 13 14 15 16 17 ...
+    16 17 18 19 20 21 ...
+    20 21 22 23 24 25 ...
+    24 25 26 27 28 29 ...
+    28 29 30 31 32 1]';
+
+T.P = [...
+    16 7 20 21 29 12 28 17 ...
+    1 15 23 26 5 18 31 10 ...
+    2 8 24 14 32 27 3 9 ...
+    19 13 30 6 22 11 4 25]';
+
+% S-boxes as 4x16 arrays (row: 0..3, col: 0..15)
+T.S = cell(8,1);
+T.S{1} = [...
+14 4 13 1 2 15 11 8 3 10 6 12 5 9 0 7;
+0 15 7 4 14 2 13 1 10 6 12 11 9 5 3 8;
+4 1 14 8 13 6 2 11 15 12 9 7 3 10 5 0;
+15 12 8 2 4 9 1 7 5 11 3 14 10 0 6 13];
+T.S{2} = [...
+15 1 8 14 6 11 3 4 9 7 2 13 12 0 5 10;
+3 13 4 7 15 2 8 14 12 0 1 10 6 9 11 5;
+0 14 7 11 10 4 13 1 5 8 12 6 9 3 2 15;
+13 8 10 1 3 15 4 2 11 6 7 12 0 5 14 9];
+T.S{3} = [...
+10 0 9 14 6 3 15 5 1 13 12 7 11 4 2 8;
+13 7 0 9 3 4 6 10 2 8 5 14 12 11 15 1;
+13 6 4 9 8 15 3 0 11 1 2 12 5 10 14 7;
+1 10 13 0 6 9 8 7 4 15 14 3 11 5 2 12];
+T.S{4} = [...
+7 13 14 3 0 6 9 10 1 2 8 5 11 12 4 15;
+13 8 11 5 6 15 0 3 4 7 2 12 1 10 14 9;
+10 6 9 0 12 11 7 13 15 1 3 14 5 2 8 4;
+3 15 0 6 10 1 13 8 9 4 5 11 12 7 2 14];
+T.S{5} = [...
+2 12 4 1 7 10 11 6 8 5 3 15 13 0 14 9;
+14 11 2 12 4 7 13 1 5 0 15 10 3 9 8 6;
+4 2 1 11 10 13 7 8 15 9 12 5 6 3 0 14;
+11 8 12 7 1 14 2 13 6 15 0 9 10 4 5 3];
+T.S{6} = [...
+12 1 10 15 9 2 6 8 0 13 3 4 14 7 5 11;
+10 15 4 2 7 12 9 5 6 1 13 14 0 11 3 8;
+9 14 15 5 2 8 12 3 7 0 4 10 1 13 11 6;
+4 3 2 12 9 5 15 10 11 14 1 7 6 0 8 13];
+T.S{7} = [...
+4 11 2 14 15 0 8 13 3 12 9 7 5 10 6 1;
+13 0 11 7 4 9 1 10 14 3 5 12 2 15 8 6;
+1 4 11 13 12 3 7 14 10 15 6 8 0 5 9 2;
+6 11 13 8 1 4 10 7 9 5 0 15 14 2 3 12];
+T.S{8} = [...
+13 2 8 4 6 15 11 1 10 9 3 14 5 0 12 7;
+1 15 13 8 10 3 7 4 12 5 6 11 0 14 9 2;
+7 11 4 1 9 12 14 2 0 6 10 13 15 3 5 8;
+2 1 14 7 4 10 8 13 15 12 9 0 3 5 6 11];
+
+T.PC1 = [...
+57 49 41 33 25 17 9 ...
+1 58 50 42 34 26 18 ...
+10 2 59 51 43 35 27 ...
+19 11 3 60 52 44 36 ...
+63 55 47 39 31 23 15 ...
+7 62 54 46 38 30 22 ...
+14 6 61 53 45 37 29 ...
+21 13 5 28 20 12 4]';
+
+T.PC2 = [...
+14 17 11 24 1 5 3 28 15 6 21 10 ...
+23 19 12 4 26 8 16 7 27 20 13 2 ...
+41 52 31 37 47 55 30 40 51 45 33 48 ...
+44 49 39 56 34 53 46 42 50 36 29 32]';
+
+T.SHIFTS = [1 1 2 2 2 2 2 2 1 2 2 2 2 2 2 1];
+end
+
+crypt\des\padZero.m
+--------------------------------------------------
+function out = padZero(inBytes, blockSize)
+if nargin<2, blockSize = 8; end
+n = numel(inBytes);
+padLen = mod(-n, blockSize);
+if padLen == 0, padLen = 0; end
+out = uint8([inBytes(:); zeros(padLen,1,'uint8')]);
+end
+
+
+crypt\des\showKeyMatrix.m
+--------------------------------------------------
+function app = showKeyMatrix(key7,app)
+                % show parity matrix
+                [~, mat] = addParityBits(key7);
+                % display matrix as lines of 0/1
+                if ~isempty(mat)
+                    lines = strings(8,1);
+                    for r=1:8
+                        lines(r) = strjoin(string(mat(r,:)),' ');
+                    end
+                    app.DESKeyTextArea.Value = lines; % uitextarea accepts string array
+                end
+end
+
+crypt\des\unpadZero.m
+--------------------------------------------------
+function out = unpadZero(inBytes)
+% Remove trailing zeros — WARNING: if original ended with zeros this is ambiguous.
+% This function removes trailing 0 bytes.
+out = inBytes(:);
+% remove trailing zeros
+k = numel(out);
+while k>0 && out(k)==0
+    k = k-1;
+end
+out = out(1:k);
 end
 
 crypt\caesarDecrypt.m
@@ -107,6 +494,349 @@ function out = caesarEncrypt(inText, shift)
     end
 end
 
+crypt\hmacSHA256.m
+--------------------------------------------------
+function macHex = hmacSHA256(key, msg)
+% HMAC-SHA256  Pure MATLAB HMAC using sha256_bytes()
+% key, msg: char or string
+% macHex: 64-char lowercase hex string
+
+    % Convert to uint8 row
+    key = uint8(char(key(:)'));
+    msg = uint8(char(msg(:)'));
+
+    % ----- Normalize key -----
+    if numel(key) > 64
+        key = sha256_bytes(key);  % 32 bytes
+    end
+    if numel(key) < 64
+        key = [key, uint8(zeros(1, 64-numel(key)))];
+    end
+
+    % ----- ipad / opad -----
+    ipad = bitxor(key, uint8(0x36));
+    opad = bitxor(key, uint8(0x5C));
+
+    % ----- INNER HASH -----
+    innerHash = sha256_bytes([ipad msg]);   % returns 32×1 uint8
+    innerHash = innerHash(:)';             % convert to row
+
+    % ----- OUTER HASH -----
+    macBytes = sha256_bytes([opad innerHash]);
+    macBytes = macBytes(:)';                % row
+
+    % return hex
+    macHex = lower(reshape(dec2hex(macBytes,2).',1,[]));
+end
+
+crypt\my_sha256.m
+--------------------------------------------------
+function hash_output = my_sha256(message)
+    % MY_SHA256 Computes the SHA-256 hash of a message.
+    %   hash_output = my_sha256(message) returns the SHA-256 hash as a uint8 array.
+    %
+    %   Input:
+    %       message - A uint8 array containing the message bytes.
+    %
+    %   Output:
+    %       hash_output - A 32-element uint8 array representing the hash.
+
+    % Constants: First 32 bits of the fractional parts of the cube roots of the first 64 primes
+    K = uint32([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ]);
+
+    % Initial hash values: First 32 bits of the fractional parts of the square roots of the first 8 primes
+    H = uint32([
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ]);
+
+    % Pre-processing: Pad the message
+    msg_len = uint64(length(message)) * 8;  % Length in bits
+    message = uint8(message);
+    
+    % Append '1' bit
+    message = [message, uint8(128)];  % 128 is 10000000 in binary
+    
+    % Pad with zeros until length ≡ 448 mod 512
+    while mod(length(message), 64) ~= 56
+        message = [message, uint8(0)];
+    end
+    
+    % Append original length as 64-bit big-endian
+    len_bytes = typecast(msg_len, 'uint8');
+    len_bytes = len_bytes(end:-1:1);  % Big-endian
+    message = [message, len_bytes];
+    
+    % Process the message in 512-bit (64-byte) chunks
+    for i = 1:64:length(message)
+        chunk = message(i:i+63);
+        
+        % Break chunk into sixteen 32-bit big-endian words
+        W = zeros(64, 1, 'uint32');
+        for j = 1:16
+            W(j) = bitshift(uint32(chunk((j-1)*4+1)), 24) + ...
+                   bitshift(uint32(chunk((j-1)*4+2)), 16) + ...
+                   bitshift(uint32(chunk((j-1)*4+3)), 8) + ...
+                   uint32(chunk((j-1)*4+4));
+        end
+        
+        % Extend the sixteen 32-bit words into sixty-four 32-bit words
+        for j = 17:64
+            s0 = bitror(W(j-15), 7) + bitror(W(j-15), 18) + bitshift(W(j-15), -3);
+            s1 = bitror(W(j-2), 17) + bitror(W(j-2), 19) + bitshift(W(j-2), -10);
+            W(j) = W(j-16) + s0 + W(j-7) + s1;
+        end
+        
+        % Initialize working variables
+        a = H(1); b = H(2); c = H(3); d = H(4);
+        e = H(5); f = H(6); g = H(7); h = H(8);
+        
+        % Compression function main loop
+        for j = 1:64
+            S1 = bitror(e, 6) + bitror(e, 11) + bitror(e, 25);
+            ch = bitxor(bitand(e, f), bitand(bitcmp(e), g));
+            temp1 = h + S1 + ch + K(j) + W(j);
+            S0 = bitror(a, 2) + bitror(a, 13) + bitror(a, 22);
+            maj = bitxor(bitxor(bitand(a, b), bitand(a, c)), bitand(b, c));
+            temp2 = S0 + maj;
+            
+            h = g;
+            g = f;
+            f = e;
+            e = d + temp1;
+            d = c;
+            c = b;
+            b = a;
+            a = temp1 + temp2;
+        end
+        
+        % Add the compressed chunk to the current hash value
+        H(1) = H(1) + a;
+        H(2) = H(2) + b;
+        H(3) = H(3) + c;
+        H(4) = H(4) + d;
+        H(5) = H(5) + e;
+        H(6) = H(6) + f;
+        H(7) = H(7) + g;
+        H(8) = H(8) + h;
+    end
+    
+    % Produce the final hash value as a 256-bit number (big-endian)
+    hash_output = zeros(1, 32, 'uint8');
+    for i = 1:8
+        temp = typecast(H(i), 'uint8');
+        hash_output((i-1)*4+1:i*4) = temp(end:-1:1);  % Big-endian
+    end
+end
+
+function r = bitror(x, n)
+    % BITROR Rotate right by n bits
+    r = bitshift(x, -n) + bitshift(x, 32 - n);
+end
+
+crypt\otpDecrypt.m
+--------------------------------------------------
+function plainText = otpDecrypt(cipherText, keyString)
+% Reverse Ci = (Pi + Ki) mod 26 → Pi = (Ci - Ki) mod 26
+
+    if isempty(cipherText) || isempty(keyString)
+        plainText = '';
+        return;
+    end
+
+    % convert keyString -> numeric array
+    key = sscanf(keyString, '%d')';
+
+    s = char(cipherText);
+    n = length(s);
+
+    if length(key) ~= n
+        error('OTP key length does not match ciphertext length.');
+    end
+
+    out = s;
+
+    for i = 1:n
+        c = s(i);
+
+        if c >= 'A' && c <= 'Z'
+            C = double(c) - double('A');
+            P = mod(C - key(i), 26);
+            out(i) = char(P + double('A'));
+
+        elseif c >= 'a' && c <= 'z'
+            C = double(c) - double('a');
+            P = mod(C - key(i), 26);
+            out(i) = char(P + double('a'));
+
+        else
+            out(i) = c; % unchanged
+        end
+    end
+
+    plainText = out;
+end
+
+crypt\otpEncrypt.m
+--------------------------------------------------
+function [cipherText, keyString] = otpEncrypt(plainText)
+% OTP classical: Ci = (Pi + Ki) mod 26
+% Only letters shift; others untouched.
+% Key is random integers [0..25], one per letter in plaintext.
+
+    if isempty(plainText)
+        cipherText = '';
+        keyString = '';
+        return;
+    end
+
+    s = char(plainText);
+    n = length(s);
+
+    % Generate key values
+    seed = RandStream('mt19937ar','Seed','shuffle');
+    key = randi(seed,[0 25], 1, n);
+
+    out = s;
+
+    for i = 1:n
+        c = s(i);
+
+        if c >= 'A' && c <= 'Z'
+            P = double(c) - double('A');
+            C = mod(P + key(i), 26);
+            out(i) = char(C + double('A'));
+
+        elseif c >= 'a' && c <= 'z'
+            P = double(c) - double('a');
+            C = mod(P + key(i), 26);
+            out(i) = char(C + double('a'));
+
+        else
+            % non-alphabet → do not use key; XOR-like OTPs use pads for every char
+            % classical OTP skips non-letters → force key(i) = 0
+            key(i) = 0;
+            out(i) = c;
+        end
+    end
+
+    cipherText = out;
+
+    % Convert numeric key to a space-separated string (easy to reuse)
+    keyString = strtrim(sprintf('%d ', key));
+end
+
+crypt\sha256_bytes.m
+--------------------------------------------------
+function digest = sha256_bytes(msg)
+% SHA256_BYTES  Correct, compact, portable SHA-256 implementation
+% Input: char, string or uint8 (will be converted to uint8 row)
+% Output: 32x1 uint8 digest (big-endian)
+
+    % --- normalize input to uint8 row ---
+    if isstring(msg), msg = char(msg); end
+    if ~isa(msg,'uint8'), msg = uint8(msg); end
+    msg = msg(:)';  % row
+
+    % --- initial hash values (big-endian uint32) ---
+    H = uint32([ ...
+        hex2dec('6a09e667') hex2dec('bb67ae85') hex2dec('3c6ef372') hex2dec('a54ff53a') ...
+        hex2dec('510e527f') hex2dec('9b05688c') hex2dec('1f83d9ab') hex2dec('5be0cd19') ]);
+
+    % --- constants K (uint32) ---
+    K = uint32([ ...
+        1116352408 1899447441 3049323471 3921009573  961987163 1508970993 2453635748 2870763221 ...
+        3624381080 310598401  607225278 1426881987 1925078388 2162078206 2614888103 3248222580 ...
+        3835390401 4022224774 264347078  604807628   770255983 1249150122 1555081692 1996064986 ...
+        2554220882 2821834349 2952996808 3210313671 3336571891 3584528711 113926993  338241895 ...
+        666307205  773529912  1294757372 1396182291 1695183700 1986661051 2177026350 2456956037 ...
+        2730485921 2820302411 3259730800 3345764771 3516065817 3600352804 4094571909 275423344 ...
+        430227734  506948616  659060556  883997877   958139571 1322822218 1537002063 1747873779 ...
+        1955562222 2024104815 2227730452 2361852424 2428436474 2756734187 3204031479 3329325298 ]);
+
+    % --- Preprocessing (padding) ---
+    L = uint64(numel(msg) * 8);           % length in bits (uint64)
+    msg = [msg uint8(128)];               % append 0x80
+
+    % append 0x00 until length in bytes ≡ 56 (mod 64)
+    while mod(numel(msg),64) ~= 56
+        msg(end+1) = uint8(0); %#ok<AGROW>
+    end
+
+    % append length as 64-bit big-endian
+    % swapbytes on uint64 then typecast yields big-endian bytes
+    lenBE = typecast(swapbytes(L),'uint8'); % 1x8 uint8 already big-endian
+    msg = [msg lenBE];
+
+    % number of 512-bit blocks
+    N = numel(msg)/64;
+
+    % process blocks
+    Hwork = H;
+    for blk = 1:N
+        chunk = msg((blk-1)*64 + (1:64)); % 1x64 uint8
+
+        % build message schedule W (64 uint32)
+        W = zeros(64,1,'uint32');
+        % convert chunk into 16 uint32 words (big-endian)
+        W(1:16) = swapbytes(typecast(chunk,'uint32'));  % ensures big-endian words
+
+        for t = 17:64
+            s0 = bitxor(bitxor(rotr(W(t-15),7), rotr(W(t-15),18)), bitshift(W(t-15),-3));
+            s1 = bitxor(bitxor(rotr(W(t-2),17), rotr(W(t-2),19)), bitshift(W(t-2),-10));
+            % use uint64 to accumulate then mask to 32 bits
+            W(t) = uint32(bitand(uint64(W(t-16)) + uint64(s0) + uint64(W(t-7)) + uint64(s1), uint64(2^32-1)));
+        end
+
+        % initialize working vars
+        a = Hwork(1); b = Hwork(2); c = Hwork(3); d = Hwork(4);
+        e = Hwork(5); f = Hwork(6); g = Hwork(7); h = Hwork(8);
+
+        for t = 1:64
+            S1  = bitxor(bitxor(rotr(e,6), rotr(e,11)), rotr(e,25));
+            ch  = bitxor(bitand(e,f), bitand(bitcmp(e),g));
+            temp1 = uint32(bitand(uint64(h) + uint64(S1) + uint64(ch) + uint64(K(t)) + uint64(W(t)), uint64(2^32-1)));
+
+            S0 = bitxor(bitxor(rotr(a,2), rotr(a,13)), rotr(a,22));
+            maj = bitxor(bitxor(bitand(a,b), bitand(a,c)), bitand(b,c));
+            temp2 = uint32(bitand(uint64(S0) + uint64(maj), uint64(2^32-1)));
+
+            h = g;
+            g = f;
+            f = e;
+            e = uint32(bitand(uint64(d) + uint64(temp1), uint64(2^32-1)));
+            d = c;
+            c = b;
+            b = a;
+            a = uint32(bitand(uint64(temp1) + uint64(temp2), uint64(2^32-1)));
+        end
+
+        % update working hash
+        Hwork = uint32(bitand(uint64(Hwork) + uint64([a b c d e f g h]), uint64(2^32-1)));
+    end
+
+    % convert Hwork (8x uint32) to 32xuint8 big-endian bytes
+    digest = zeros(32,1,'uint8');
+    for i = 1:8
+        digest((i-1)*4 + (1:4)) = typecast(swapbytes(Hwork(i)),'uint8');
+    end
+end
+
+function y = rotr(x,n)
+% rotate right for uint32 inputs
+    x = uint32(x);
+    y = bitor(bitshift(x, -n), bitshift(x, 32-n));
+end
+
 crypt\xorBytes.m
 --------------------------------------------------
 function out = xorBytes(bytes, keyBytes)
@@ -120,6 +850,7 @@ function out = xorBytes(bytes, keyBytes)
         error('xorBytes: empty key');
     end
     keyRep = repmat(key, ceil(numel(bytes)/numel(key)), 1);
+    
     keyRep = keyRep(1:numel(bytes));
     out = bitxor(uint8(bytes(:)), uint8(keyRep));
 end
@@ -141,6 +872,8 @@ function DecryptHandler(app)
         end
     end
 
+    updateStatus(app, "Decrypting...");
+    
     try
         switch M
             case 'CaesarPanel'
@@ -179,6 +912,68 @@ function DecryptHandler(app)
                     % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Decrypted (XOR text)';
                 end
+            case 'OTPPanel'
+                cipher = app.currentText;
+                keyStr = app.currentKey;
+            
+                if isempty(cipher)
+                    uialert(app.UIFigure,'Enter ciphertext first.','Error'); return;
+                end
+                if isempty(keyStr)
+                    uialert(app.UIFigure,'No OTP key stored. Encrypt first.','Error'); return;
+                end
+            
+                try
+                    plain = otpDecrypt(cipher, keyStr);
+                catch ME
+                    uialert(app.UIFigure, ME.message, 'Error');
+                    return;
+                end
+            
+                app.outputText = plain;
+                ui.UserOutput.Value = plain;
+                ui.Status.Text = 'Decrypted (OTP)';
+
+            case 'DESPanel'
+                ui = app.UI.(M);
+                % key must be present in app.currentKey or in DESKeyEditField
+                keyStr = app.currentKey;
+                if ~isempty(app.DESKeyEditField.Value)
+                    keyStr = char(app.DESKeyEditField.Value);
+                end
+                % if isempty(keyStr)
+                %     keyStr = char(app.DESKeyEditField.Value);
+                % end
+                if isempty(keyStr) || numel(keyStr) ~= 7
+                    uialert(app.UIFigure,'Provide 7-char key or encrypt to generate it','Error'); return;
+                end
+                key7 = uint8(keyStr(:));
+                app = showKeyMatrix(key7,app);
+            
+                if app.isInputImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = desDecryptECB(inBytes, key7);
+                    app.outputImage = bytesToImage(outBytes, meta); % meta must be known — store when loading
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
+                    ui.Btn_SaveImage.Visible = 'on';
+                    ui.Status.Text = 'Decrypted (DES image)';
+                else
+                    % text: input is base64 display; convert base64 -> bytes then decrypt -> text
+                    if isempty(app.currentText)
+                        uialert(app.UIFigure,'Paste base64 ciphertext into input','Error'); return;
+                    end
+                    try
+                        cipherBytes = matlab.net.base64decode(char(app.currentText));
+                        outBytes = desDecryptECB(cipherBytes, key7);
+                        app.outputText = bytesToText(outBytes);
+                        ui.UserOutput.Value = app.outputText;
+                        ui.Status.Text = 'Decrypted (DES text)';
+                    catch ME
+                        uialert(app.UIFigure, ['DES decrypt error: ' ME.message], 'Error');
+                    end
+                end
+
             otherwise
                 uialert(app.UIFigure,'Decrypt: module not implemented','Error');
         end
@@ -204,6 +999,8 @@ function EncryptHandler(app)
             uialert(app.UIFigure,'Enter text first.','Error'); return;
         end
     end
+
+    updateStatus(app, "Encrypting...");
 
     try
         switch M
@@ -248,11 +1045,100 @@ function EncryptHandler(app)
                     % ui.PreviewText.Value = splitlines(app.outputText);
                     ui.Status.Text = 'Encrypted (XOR text)';
                 end
+            case 'OTPPanel'
+                % Generate a one-time pad key
+                txt = app.currentText;
+                if isempty(strtrim(txt))
+                    uialert(app.UIFigure,'Enter text first.','Error'); return;
+                end
+            
+                [cipher, keyStr] = otpEncrypt(txt);
+            
+                app.outputText = cipher;
+                app.currentKey = keyStr;
+            
+                ui.UserOutput.Value = cipher;
+                app.OTPKeyEditField.Value = keyStr;
+            
+                ui.Status.Text = 'Encrypted (OTP)';
+
+            case 'DESPanel'
+                ui = app.UI.(M);
+                % Get user key (7 chars) or generate
+                keyStr = '';
+                if ~isempty(app.DESKeyEditField.Value)
+                    keyStr = char(app.DESKeyEditField.Value);
+                end
+                if isempty(keyStr)
+                    key7 = uint8(randi([32,126],7,1)); % printable random if you want
+                    keyStr = char(key7');
+                    app.DESKeyEditField.Value = keyStr;
+                else
+                    if numel(keyStr) ~= 7
+                        uialert(app.UIFigure,'Key must be exactly 7 characters','Error'); return;
+                    end
+                    key7 = uint8(keyStr(:));
+                end
+            
+                % Show key ASCII to user
+                app.currentKey = keyStr;
+                app = showKeyMatrix(key7,app);
+            
+                % Prepare input bytes depending on mode
+                if app.isInputImage
+                    [inBytes, meta] = imageToBytes(app.currentImage);
+                    outBytes = desEncryptECB(inBytes, key7);
+                    app.outputImage = bytesToImage(outBytes, meta);
+                    ui.PreviewAxes.Visible = 'on';
+                    imshow(app.outputImage, 'Parent', ui.PreviewAxes);
+                    ui.Btn_SaveImage.Visible = 'on';
+                    ui.Status.Text = 'Encrypted (DES image)';
+                else
+                    % text path: convert text->bytes then encrypt; display base64 ciphertext
+                    inBytes = textToBytes(app.currentText);
+                    outBytes = desEncryptECB(inBytes, key7);
+                    % show base64 for display purposes
+                    cipherB64 = matlab.net.base64encode(outBytes);
+                    app.outputText = char(cipherB64);
+                    ui.UserOutput.Value = app.outputText;
+                    ui.Status.Text = 'Encrypted (DES text, base64 shown)';
+                end
+
+            case 'HMACPanel'
+                HMACHandler(app);
+                
             otherwise
                 uialert(app.UIFigure,'Encrypt: module not implemented','Error');
         end
     catch ME
         uialert(app.UIFigure, ['Encrypt error: ' ME.message], 'Error');
+    end
+end
+
+handlers\HMACHandler.m
+--------------------------------------------------
+function HMACHandler(app)
+    ui = app.UI.(app.currentModule);
+
+    msg = app.currentText;
+    key = app.HMACKeyEditField.Value;
+
+    if isempty(strtrim(msg))
+        uialert(app.UIFigure,'Enter text first.','Error'); return;
+    end
+    if isempty(strtrim(key))
+        uialert(app.UIFigure,'Enter HMAC key.','Error'); return;
+    end
+
+    try
+        mac = hmacSHA256(key,msg);
+
+        app.outputText = mac;
+        ui.UserOutput.Value = mac;
+        ui.Status.Text = 'HMAC generated';
+
+    catch ME
+        uialert(app.UIFigure, ['HMAC error: ' ME.message],'Error');
     end
 end
 
@@ -268,6 +1154,8 @@ function resetModule(app, panelName)
     app.currentImage = [];
     app.outputText = '';
     app.outputImage = [];
+    app.currentKey = '';
+
 
     % UI controls (guarded)
     if isfield(ui,'UserInput'), ui.UserInput.Value = ''; end
@@ -277,7 +1165,7 @@ function resetModule(app, panelName)
         ui.PreviewAxes.Visible = 'off'; 
         imshow([], 'Parent', ui.PreviewAxes);
     end
-    % if isfield(ui,'PreviewText'), ui.PreviewText.Visible = 'off'; end
+
     if isfield(ui,'Btn_SaveImage'), ui.Btn_SaveImage.Visible = 'off'; end
 
     % in image mode InputPath should be non-editable
@@ -291,6 +1179,14 @@ function resetModule(app, panelName)
             app.ShiftEditField.Value = 3;
         case 'XORPanel'
             app.XORKeyEditField.Value = '';
+        case 'OTPPanel'
+            app.currentKey = '';
+            app.OTPKeyEditField.Value = '';
+        case 'DESPanel'
+            app.DESKeyEditField.Value='';
+            app.DESKeyTextArea.Value='';
+        case 'HMACPanel'
+            app.HMACKeyEditField.Value='';
     end
 
     ui.Status.Text = 'Reset complete';
@@ -343,6 +1239,76 @@ function txt = bytesToText(bytes)
         return;
     end
     txt = char(bytes(:).'); % make a row char vector
+end
+
+io\encoding\decodeImage_Base64.m
+--------------------------------------------------
+function img = decodeImage_Base64(b64, meta)
+% DECODEIMAGE_BASE64 Decode base64 string back into an image.
+
+    if isempty(b64) || isempty(meta)
+        img = [];
+        return;
+    end
+
+    % Base64 → bytes
+    bytes = matlab.net.base64decode(b64);
+
+    % bytes → image (uses your existing decoder)
+    img = bytesToImage(bytes, meta);
+end
+
+io\encoding\decodeText_Base64.m
+--------------------------------------------------
+function txt = decodeText_Base64(b64)
+% DECODETEXT_BASE64 Convert base64 string back to plain text.
+
+    if isempty(b64)
+        txt = "";
+        return;
+    end
+
+    % Decode Base64 string → bytes
+    bytes = matlab.net.base64decode(b64);
+
+    % Convert back to character text
+    txt = char(bytes(:).');
+end
+
+io\encoding\encodeImage_Base64.m
+--------------------------------------------------
+function [b64, meta] = encodeImage_Base64(img)
+% ENCODEIMAGE_BASE64 Convert an image matrix to base64 string.
+% Returns base64 string AND metadata required to rebuild the image.
+
+    if isempty(img)
+        b64 = "";
+        meta = [];
+        return;
+    end
+
+    % Convert image → bytes using your existing encoder
+    [bytes, meta] = imageToBytes(img);
+
+    % Base64 encode bytes
+    b64 = matlab.net.base64encode(bytes);
+end
+
+io\encoding\encodeText_Base64.m
+--------------------------------------------------
+function b64 = encodeText_Base64(txt)
+% ENCODETEXT_BASE64 Convert a text string to base64 string.
+
+    if isempty(txt)
+        b64 = "";
+        return;
+    end
+
+    % Convert text → bytes
+    bytes = uint8(txt);
+
+    % Encode bytes → Base64 string
+    b64 = matlab.net.base64encode(bytes);
 end
 
 io\encoding\imageToBytes.m
@@ -451,10 +1417,10 @@ end
 
 io\switchInputMode.m
 --------------------------------------------------
-function switchInputMode(app, event, panelName)
+function switchInputMode(app, new, panelName)
 % Switch between Text and Image input modes in a panel.
     ui = app.UI.(panelName);
-    new = event.NewValue.Text;
+    % new = event.NewValue.Text;
     if contains(new,'Image')
         app.isInputImage = true;
         % enable image controls
@@ -477,90 +1443,6 @@ function switchInputMode(app, event, panelName)
     end
     resetModule(app,panelName);
 end
-
-preview\previewDispatcher.m
---------------------------------------------------
-function previewDispatcher(app)
-% Shows ONLY what is appropriate for current mode (text or image)
-
-    % Hide everything first
-    try app.PreviewAxes.Visible = 'off'; catch; end
-    % try app.PreviewTextArea.Visible = 'off'; catch; end
-
-    M = app.currentModule;
-    ui = app.UI.(M);
-
-    % ============================
-    % IMAGE MODE
-    % ============================
-    if app.isInputImage
-        % Never show text areas in image mode
-        ui.UserOutput.Visible = 'off';
-
-        if ~isempty(app.outputImage)
-            % Show OUTPUT image
-            app.PreviewAxes.Visible = 'on';
-            imshow(app.outputImage, 'Parent', app.PreviewAxes);
-            return;
-        end
-
-        if ~isempty(app.currentImage)
-            % Show INPUT image if no output yet
-            app.PreviewAxes.Visible = 'on';
-            imshow(app.currentImage, 'Parent', app.PreviewAxes);
-            return;
-        end
-
-        return;
-    end
-
-    % ============================
-    % TEXT MODE
-    % ============================
-    % Never use PreviewTextArea at all for text modules
-    % app.PreviewTextArea.Visible = 'off';
-    app.PreviewAxes.Visible = 'off';
-
-    % Only show text inside the module's UserOutput text area
-    if ~isempty(app.outputText)
-        ui.UserOutput.Value = app.outputText;
-    end
-end
-
-
-% function previewDispatcher(app)
-% % PREVIEWDISPATCHER   Show app.outputImage (preferred) or app.outputText.
-%     % hide both first
-%     try app.PreviewAxes.Visible = 'off'; catch; end
-%     try app.PreviewTextArea.Visible = 'off'; catch; end
-% 
-%     if ~isempty(app.outputImage)
-%         app.PreviewTextArea.Visible = 'off';
-%         app.PreviewAxes.Visible = 'on';
-%         imshow(app.outputImage, 'Parent', app.PreviewAxes);
-%         return;
-%     end
-% 
-%     if ~isempty(app.outputText)
-%         app.PreviewAxes.Visible = 'off';
-%         app.PreviewTextArea.Visible = 'on';
-%         % preview text as cellstr (TextArea expects cell or string array)
-%         app.PreviewTextArea.Value = cellstr(app.outputText);
-%         return;
-%     end
-% end
-
-preview\previewImage.m
---------------------------------------------------
-function previewImage(app, img)
-    imshow(img, 'Parent', app.UIAxes);
-end
-
-preview\previewText.m
---------------------------------------------------
-% function previewText(app, txt)
-%     app.TextArea.Value = splitlines(txt);
-% end
 
 mainApp.mlapp
 --------------------------------------------------

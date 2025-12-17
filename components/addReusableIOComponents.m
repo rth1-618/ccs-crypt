@@ -20,8 +20,10 @@ function addReusableIOComponents(app, panelName, allowImage)
         ui.ImageRadio = uiradiobutton(ui.InputTypeGroup, 'Text','Image Input', 'Position',[120 8 120 22]);
     end
 
-    % Text input label + area
-    uilabel(P,'Text','Input:','Position',[20 300 80 22]);
+    if ~strcmp(panelName,'DiffHellPanel')
+        % Text input label + area
+        uilabel(P,'Text','Input:','Position',[20 300 80 22]);
+    end
     ui.UserInput = uitextarea(P, 'Position',[20 210 300 90]);
     % attach callback to capture text into app
     ui.UserInput.ValueChangedFcn = @(t,e)catchTextInput(app, panelName);
@@ -55,8 +57,11 @@ function addReusableIOComponents(app, panelName, allowImage)
         ui.Btn_Reset.Position = [140 130 100 35];
     end
 
-    % Output area (single textarea) — used for text outputs
-    uilabel(P,'Text','Output:','Position',[20 100 80 22]);
+    if ~strcmp(panelName,'DiffHellPanel')
+        % Output area (single textarea) — used for text outputs
+        uilabel(P,'Text','Output:','Position',[20 100 80 22]);
+    end
+
     ui.UserOutput = uitextarea(P, 'Position',[20 10 300 90], 'Editable','off');
 
     % Add a small preview area under output (shared for text or image)
